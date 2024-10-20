@@ -1,0 +1,93 @@
+---
+title: What are web vitals?
+description: Web Vitals are a set of metrics that measure the quality of user experience on the web. They include Largest Contentful Paint (LCP), First Input Delay (FID), and Cumulative Layout Shift (CLS).
+image: "/images/blog/web_vitals.webp"
+date: "2022-12-31"
+author: "ruijadom"
+---
+
+## What Are Web Vitals?
+
+Web Vitals are a set of important metrics that measure the quality of user experience on the web. They help you understand how your website performs in terms of loading speed, interactivity, and visual stability. The key metrics that make up Web Vitals are Largest Contentful Paint (LCP), First Input Delay (FID), and Cumulative Layout Shift (CLS).
+
+## Why Are Web Vitals Important?
+
+As a front-end developer, focusing on Web Vitals is essential for several reasons:
+
+- **User Experience**: Web Vitals reflect how fast and stable your website feels to users. If a site is slow or its layout shifts unexpectedly, it can lead to frustration, higher bounce rates, and less engagement. By optimizing these metrics, you ensure a smooth, fast experience that keeps users happy and engaged.
+- **SEO and Traffic**: Search engines, especially Google, take Web Vitals into account when ranking websites. A better-performing site often means higher rankings, which can lead to more organic traffic and potential business opportunities.
+
+- **Maintenance and Scalability**: A well-optimized site is easier to maintain and scale. By addressing Web Vitals early, you’ll likely save yourself from performance headaches down the road.
+
+## The Core Web Vitals
+
+Let’s break down each of the three core metrics:
+
+1. **Largest Contentful Paint (LCP)**: This measures how quickly the main content of your webpage loads and is visible to users. Ideally, you want your LCP to happen within 2.5 seconds for a good user experience.
+
+2. **First Input Delay (FID)**: This measures the time it takes for your page to become interactive, meaning how long it takes for the browser to respond to a user’s first interaction, like clicking a button. A good FID is under 100 milliseconds.
+
+3. **Cumulative Layout Shift (CLS)**: This tracks how stable your page layout is during load. A page that unexpectedly shifts as it loads causes poor user experience. Keeping CLS below 0.1 is considered good.
+
+## How to Measure Web Vitals
+
+You can measure Web Vitals using a few different tools:
+
+- **Browser Developer Tools**: Modern browsers, like Chrome, have built-in tools to track performance metrics. In Chrome, for example, the "Performance" tab provides insights into LCP, FID, and CLS.
+
+- **Online Tools**: Tools like Google Lighthouse can automatically audit your site and give you a detailed performance report, including Web Vitals. You can also use PageSpeed Insights, SpeedCurve, and WebPageTest.
+
+- **Monitoring Services**: If you want to keep track of your site's performance over time, services like SpeedCurve, or Lighthouse CI can monitor Web Vitals continuously.
+
+## Optimizing Web Vitals
+
+#### Largest Contentful Paint (LCP)
+
+To improve LCP, focus on:
+
+- **Optimizing images**: Resize and compress your images to reduce load times. Use responsive images to serve smaller versions on mobile devices.
+- **Reducing unnecessary resources**: Minimize the number of resources your page needs to load. Combine CSS and JavaScript files when possible, and use a Content Delivery Network (CDN) for faster load times.
+
+- **Preloading important assets**: Preload key resources like fonts and images to ensure they load quickly.
+
+- **Server optimization**: Improve server response times with caching and efficient server setups.
+
+![Optimize LCP](https://miro.medium.com/v2/resize:fit:1400/1*nVsL9IUhEE4JvYveksZjxQ.png)
+
+Read more: [Optimize LCP](https://web.dev/optimize-lcp/)
+
+#### First Input Delay (FID)
+
+To enhance FID:
+
+- **Defer non-essential JavaScript**: Postpone the loading of scripts that aren’t necessary for the initial page load. Use the `defer` attribute in your HTML where possible.
+
+- **Optimize JavaScript execution**: Minimize, split, and clean up your JavaScript to reduce the browser's workload.
+
+- **Consider Server-Side Rendering (SSR)**: With SSR, your page is rendered on the server, reducing the load on the browser and improving the time to interactivity.
+
+![Optimize FID](https://miro.medium.com/v2/resize:fit:1400/1*9QjbNCsDITbuA1D83a628A.png)
+
+Read more: [Optimize FID](https://web.dev/optimize-fid/)
+
+#### Cumulative Layout Shift (CLS)
+
+To reduce CLS:
+
+- **Define dimensions for media**: Always specify width and height for images, videos, and other elements so the browser reserves space before they load.
+
+- **Use the `font-display` CSS property**: This prevents layout shifts caused by fonts loading late.
+
+- **Avoid inserting content above existing elements**: If new content is injected dynamically, make sure it doesn’t push the page down unexpectedly.
+
+![Optimize CLS](https://miro.medium.com/v2/resize:fit:1400/1*VqgBqe2Rp8A2Owi_dqw2sQ.png)
+
+Read more: [Optimize CLS](https://web.dev/optimize-cls/)
+
+### Final Thoughts
+
+While Core Web Vitals are essential, remember that they are just part of the overall picture of web performance. Metrics like Time to First Byte (TTFB), Time to First Paint, and Time to Interactive also play important roles in providing a smooth and efficient user experience.
+
+By focusing on Web Vitals, you’re setting your site up for success—both in terms of user satisfaction and search engine visibility.
+
+Web Vitals are a set of metrics that measure the quality of user experience on the web. They include Largest Contentful Paint (LCP), First Input Delay (FID), and Cumulative Layout Shift (CLS).
