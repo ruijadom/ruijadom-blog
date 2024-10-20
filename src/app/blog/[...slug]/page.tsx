@@ -84,6 +84,7 @@ export default async function BlogPageItem({ params }: BlogPageItemProps) {
               alt={blog.author}
               className="size-9 rounded-full bg-white object-cover "
             />
+
             <div className="flex-1 text-left leading-tight">
               <p className="font-medium">{blog.author}</p>
               <p className="text-[12px] text-muted-foreground">

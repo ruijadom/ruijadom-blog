@@ -20,7 +20,6 @@ export default function MobileNav({ onOpenChange }: MobileNavProps) {
             className="flex items-center"
             onOpenChange={onOpenChange}
           >
-            <item.icon className="mr-2 size-4" />
             <span>{item.label}</span>
           </MobileLink>
         ))}
@@ -54,7 +53,7 @@ const MobileLink = ({
       className={cn(
         "transition-colors hover:text-primary",
         pathname === href.toString() ? "text-primary" : "text-muted-foreground",
-        className,
+        className
       )}
       {...props}
     >
