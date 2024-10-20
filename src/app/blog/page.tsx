@@ -1,8 +1,8 @@
+/* eslint-disable tailwindcss/no-custom-classname */
 import React from "react";
 import { Metadata } from "next";
 import PageHeader from "@/components/page-header";
 import { blogs as allBlogs } from "#site/content";
-import Image from "next/image";
 import Link from "next/link";
 import { formatDate } from "@/lib/utils";
 import Spotlight, { SpotlightCard } from "@/components/ui/spotlight";
@@ -37,7 +37,7 @@ export default function BlogPage() {
                     <div className="translate-z-0 absolute inset-0 rounded-full bg-accent/50 blur-[80px]"></div>
                   </div>
 
-                  <div className="flex flex-col min-h-20 justify-around gap-4">
+                  <div className="flex min-h-20 flex-col justify-around gap-4">
                     {blog.title && (
                       <h5 className="text-2xl font-extrabold text-primary">
                         {blog.title}
