@@ -1,9 +1,10 @@
 import { Icons } from "@/components/icons";
 import { siteConfig } from "@/config/site";
+import { Book, User } from "lucide-react";
 
 export const NAV_LIST = [
-  { label: "Blog", path: "/blog", icon: null },
-  { label: "About", path: "/about", icon: null },
+  { label: "Blog", path: "/blog", icon: Book },
+  { label: "About", path: "/about", icon: User },
 ];
 
 export const SOCIALS = [
