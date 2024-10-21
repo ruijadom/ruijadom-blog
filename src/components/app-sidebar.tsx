@@ -1,6 +1,4 @@
 "use client";
-import Link, { LinkProps } from "next/link";
-import { usePathname, useRouter } from "next/navigation";
 import { NAV_LIST } from "@/constants";
 
 import {

@@ -1,7 +1,7 @@
 "use client";
-import React, { useState } from "react";
+import React from "react";
 import Link from "next/link";
-import { AlignLeft, X } from "lucide-react";
+import { AlignLeft } from "lucide-react";
 import { siteConfig } from "@/config/site";
 import HeaderNav from "@/components/header-nav";
 import { Button } from "@/components/ui/button";
