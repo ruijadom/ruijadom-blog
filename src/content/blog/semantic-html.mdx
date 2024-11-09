@@ -1,0 +1,178 @@
+---
+title: "Best Practices for More Meaningful Code"
+description: "Semantic HTML is essential for creating more accessible, well-structured, and maintainable websites. In this article, we'll explore the best practices for using semantic HTML and understand why it's so important in frontend development."
+date: "2023-01-12"
+author: "ruijadom"
+---
+
+## Semantic HTML
+
+Semantic HTML is essential for creating more accessible, well-structured, and maintainable websites. In this article, we'll explore the best practices for using semantic HTML and understand why it's so important in frontend development.
+
+## What is Semantic HTML?
+
+Semantic HTML is the practice of using HTML elements that carry meaning about their content, rather than just defining their visual presentation. This means choosing tags that clearly express the purpose of the content they contain.
+
+## Why Use Semantic HTML?
+
+1. **Accessibility**: Screen readers and assistive technologies can better interpret the content
+2. **SEO**: Search engines better understand the structure and relevance of content
+3. **Maintainability**: Code that's easier to understand and maintain
+4. **Consistency**: Standardization in document structure
+
+## Semantic HTML Best Practices
+
+### 1. Basic Document Structure
+
+```html
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Page Title</title>
+  </head>
+  <body>
+    <header>
+      <nav>
+        <!-- Main navigation -->
+      </nav>
+    </header>
+    <main>
+      <!-- Main content -->
+    </main>
+    <footer>
+      <!-- Footer content -->
+    </footer>
+  </body>
+</html>
+```
+
+### 2. Use Appropriate Semantic Tags
+
+#### Instead of:
+
+```html
+<div class="header">
+  <div class="nav">
+    <div class="footer"></div>
+  </div>
+</div>
+```
+
+#### Prefer:
+
+```html
+<header>
+  <nav>
+    <footer></footer>
+  </nav>
+</header>
+```
+
+### 3. Essential Semantic Elements
+
+| Element     | Purpose                             |
+| ----------- | ----------------------------------- |
+| `<header>`  | Page or section header              |
+| `<nav>`     | Navigation menu                     |
+| `<main>`    | Main content                        |
+| `<article>` | Independent, self-contained content |
+| `<section>` | Thematic grouping of content        |
+| `<aside>`   | Related but separate content        |
+| `<footer>`  | Page or section footer              |
+
+### 4. Heading Hierarchy
+
+```html
+<h1>Main Page Title</h1>
+<section>
+  <h2>Section Subtitle</h2>
+  <h3>Specific Topic</h3>
+</section>
+```
+
+### 5. Lists and Navigation
+
+```html
+<nav>
+  <ul>
+    <li><a href="#home">Home</a></li>
+    <li><a href="#about">About</a></li>
+    <li><a href="#contact">Contact</a></li>
+  </ul>
+</nav>
+```
+
+### 6. Semantic Forms
+
+```html
+<form>
+  <fieldset>
+    <legend>Personal Information</legend>
+
+    <label for="name">Name:</label>
+    <input type="text" id="name" required />
+
+    <label for="email">Email:</label>
+    <input type="email" id="email" required />
+  </fieldset>
+</form>
+```
+
+### 7. Text Elements
+
+| Element        | Usage             |
+| -------------- | ----------------- |
+| `<p>`          | Paragraphs        |
+| `<blockquote>` | Quotations        |
+| `<em>`         | Emphasis          |
+| `<strong>`     | Strong importance |
+| `<mark>`       | Highlighted text  |
+| `<time>`       | Dates and times   |
+
+## Additional Tips
+
+### 1. Using ARIA Attributes
+
+```html
+<button aria-label="Close modal">×</button>
+```
+
+### 2. Language Attributes
+
+```html
+<html lang="en">
+  <p lang="es">Contenido en español</p>
+</html>
+```
+
+### 3. Images with Captions
+
+```html
+<figure>
+  <img src="chart.jpg" alt="Sales chart 2023" />
+  <figcaption>First quarter sales for 2023</figcaption>
+</figure>
+```
+
+## Best Practices Checklist
+
+- [ ] Use semantic elements instead of generic divs and spans
+- [ ] Maintain proper heading hierarchy (h1-h6)
+- [ ] Include appropriate ARIA labels where needed
+- [ ] Add alt text to images
+- [ ] Use descriptive link text
+- [ ] Implement proper form labels
+- [ ] Include language attributes
+
+## Conclusion
+
+Semantic HTML isn't just about following best practices – it's a necessity for creating modern, accessible, and well-structured websites. By following these guidelines, you'll be contributing to a more inclusive web while maintaining more professional and organized code.
+
+Remember: well-structured HTML is the foundation of any successful frontend project. Invest time in planning and implementing proper semantic structure, and the benefits will be evident both for users and code maintenance.
+
+Read more: [HTML Elements Reference](https://developer.mozilla.org/en-US/docs/Web/HTML/Element)
+
+---
+
+_Pro tip: Save this guide as a reference for your next frontend project to ensure you're following semantic HTML best practices._

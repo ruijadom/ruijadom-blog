@@ -94,25 +94,17 @@ export default async function BlogPageItem({ params }: BlogPageItemProps) {
           </div>
         )}
 
-        {blog.image && (
-          <Image
-            src={blog.image}
-            alt={blog.title}
-            width={720}
-            height={405}
-            priority
-            className="my-8 border bg-muted transition-colors"
-          />
-        )}
+        <div className="mt-14" />
         <Mdx code={blog.body} />
         <hr className="mt-12" />
+
         <div className="flex justify-center py-6 lg:py-10">
           <Link
             href="/blog"
             className={cn(buttonVariants({ variant: "ghost" }))}
           >
             <ChevronLeft className="mr-2 size-4" />
-            See all Blogs
+            See all Articles
           </Link>
         </div>
       </div>
