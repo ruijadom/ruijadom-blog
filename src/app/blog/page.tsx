@@ -39,9 +39,9 @@ export default function BlogPage() {
 
                   <div className="flex min-h-20 flex-col justify-around gap-4">
                     {blog.title && (
-                      <h5 className="text-2xl font-extrabold text-primary">
+                      <h2 className="text-2xl font-semibold text-primary">
                         {blog.title}
-                      </h5>
+                      </h2>
                     )}
                     {blog.date && (
                       <p className="text-sm text-muted-foreground/60">
