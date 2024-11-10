@@ -1,0 +1,181 @@
+---
+title: "Compound Components in React"
+description: "Compound Components is a powerful React pattern that helps create flexible and maintainable component APIs. Learn how to implement this pattern to build more intuitive and reusable UI components while following React best practices."
+date: "2024-02-09"
+author: "ruijadom"
+---
+
+## Introduction
+
+Compound Components is a powerful design pattern in React that allows you to create flexible and reusable components with a more intuitive and expressive API. In this post, we'll explore what compound components are, why they're useful, and how to implement them effectively.
+
+## What are Compound Components?
+
+Compound components are components that work together to form a complete UI pattern. Think of them like the `select` and `option` elements in HTML - they're separate elements but are designed to work together.
+
+## Why Use Compound Components?
+
+1. **Flexible Layout**: Components can be arranged in any order
+2. **Intuitive API**: The usage mirrors HTML's natural composition
+3. **Encapsulated State**: State is managed internally while allowing external control when needed
+4. **Better Developer Experience**: More readable and maintainable code
+
+## A Simple Example: Toggle Component
+
+Let's create a simple toggle component to demonstrate this pattern:
+
+```jsx
+import React, { createContext, useContext, useState } from "react";
+
+// Create context for the toggle state
+const ToggleContext = createContext();
+
+// Main component
+function Toggle({ children, onToggle }) {
+  const [on, setOn] = useState(false);
+
+  const toggle = () => {
+    setOn(!on);
+    if (onToggle) {
+      onToggle(!on);
+    }
+  };
+
+  return (
+    <ToggleContext.Provider value={{ on, toggle }}>
+      {children}
+    </ToggleContext.Provider>
+  );
+}
+
+// Child components
+Toggle.Button = function ToggleButton() {
+  const { on, toggle } = useContext(ToggleContext);
+
+  return <button onClick={toggle}>{on ? "ON" : "OFF"}</button>;
+};
+
+Toggle.Display = function ToggleDisplay() {
+  const { on } = useContext(ToggleContext);
+
+  return <div>The toggle is: {on ? "ON" : "OFF"}</div>;
+};
+```
+
+## How to Use It
+
+Here's how you would use the compound components we just created:
+
+```jsx
+function App() {
+  return (
+    <Toggle onToggle={(state) => console.log(`Toggle state: ${state}`)}>
+      <Toggle.Display />
+      <Toggle.Button />
+    </Toggle>
+  );
+}
+```
+
+## A More Complex Example: Select Component
+
+Let's look at a more practical example - a custom select component:
+
+```jsx
+import React, { createContext, useContext, useState } from "react";
+
+const SelectContext = createContext();
+
+function Select({ children, onSelect }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedOption, setSelectedOption] = useState(null);
+
+  const value = {
+    isOpen,
+    setIsOpen,
+    selectedOption,
+    setSelectedOption,
+    onSelect,
+  };
+
+  return (
+    <SelectContext.Provider value={value}>
+      <div className="select-container">{children}</div>
+    </SelectContext.Provider>
+  );
+}
+
+Select.Trigger = function SelectTrigger() {
+  const { isOpen, setIsOpen, selectedOption } = useContext(SelectContext);
+
+  return (
+    <button onClick={() => setIsOpen(!isOpen)}>
+      {selectedOption?.label || "Select an option"}
+      <span>{isOpen ? "▲" : "▼"}</span>
+    </button>
+  );
+};
+
+Select.Options = function SelectOptions({ children }) {
+  const { isOpen } = useContext(SelectContext);
+
+  if (!isOpen) return null;
+
+  return <div className="options-container">{children}</div>;
+};
+
+Select.Option = function SelectOption({ value, children }) {
+  const { setSelectedOption, setIsOpen, onSelect } = useContext(SelectContext);
+
+  const handleSelect = () => {
+    setSelectedOption({ value, label: children });
+    setIsOpen(false);
+    if (onSelect) {
+      onSelect({ value, label: children });
+    }
+  };
+
+  return (
+    <div className="option" onClick={handleSelect}>
+      {children}
+    </div>
+  );
+};
+```
+
+## Using the Select Component
+
+```jsx
+function App() {
+  return (
+    <Select onSelect={(option) => console.log("Selected:", option)}>
+      <Select.Trigger />
+      <Select.Options>
+        <Select.Option value="1">Option 1</Select.Option>
+        <Select.Option value="2">Option 2</Select.Option>
+        <Select.Option value="3">Option 3</Select.Option>
+      </Select.Options>
+    </Select>
+  );
+}
+```
+
+## Best Practices
+
+1. **Use Context Wisely**: Only share what's necessary through context
+2. **TypeScript Support**: Add proper type definitions for better developer experience
+3. **Error Boundaries**: Implement error boundaries for better error handling
+4. **Documentation**: Document the expected usage and props of each component
+5. **Accessibility**: Ensure your compound components follow accessibility best practices
+
+## Conclusion
+
+Compound components provide a powerful way to create flexible and reusable UI components. They help create more intuitive APIs and make your code more maintainable. While they might require a bit more initial setup, the benefits in terms of flexibility and developer experience make them worth considering for your next React project.
+
+Remember that like any pattern, compound components aren't always the best solution. Use them when you need to create components with complex internal state and multiple related pieces that need to work together seamlessly.
+
+## Further Reading
+
+- [React Documentation](https://react.dev)
+- [Kent C. Dodds' Advanced React Patterns](https://kentcdodds.com/blog/compound-components-with-react-hooks)
+- [React Patterns](https://reactpatterns.com/)

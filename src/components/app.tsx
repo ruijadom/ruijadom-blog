@@ -17,6 +17,7 @@ export default function App({ children }: PropsWithChildren) {
 
         <main className="container flex-1">
           <Particles
+            // eslint-disable-next-line tailwindcss/no-custom-classname
             className="animate-fade-in absolute inset-0 -z-10"
             quantity={100}
           />

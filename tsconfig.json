@@ -27,7 +27,9 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",
-    "./.velite"
+    "./.velite",
+    "src/content/blog/compound-components.mdx",
+    "src/content/blog/compound-components.mdx"
   ],
   "exclude": ["node_modules"]
 }

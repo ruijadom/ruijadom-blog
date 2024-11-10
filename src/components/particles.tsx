@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect } from "react";
 import useMousePosition from "@/hooks/use-mouse-position";
+import { ShootingStars } from "./shooting-starts";
 
 interface ParticlesProps {
   className?: string;
@@ -231,6 +232,7 @@ export default function Particles({
 
   return (
     <div className={className} ref={canvasContainerRef} aria-hidden="true">
+      <ShootingStars />
       <canvas ref={canvasRef} />
     </div>
   );

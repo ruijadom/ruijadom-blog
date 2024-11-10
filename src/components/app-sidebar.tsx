@@ -31,7 +31,7 @@ export function AppSidebar() {
                     "font-normal hover:text-primary transition-colors flex items-center",
                     `/${segment}` === path
                       ? "text-primary"
-                      : "text-muted-foreground"
+                      : "text-muted-foreground",
                   )}
                 >
                   <SidebarMenuButton asChild>

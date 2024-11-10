@@ -19,7 +19,7 @@ export default function Home() {
             href="/blog"
             className={cn(
               buttonVariants({ size: "lg", variant: "secondary" }),
-              "border"
+              "border",
             )}
           >
             My Blog
