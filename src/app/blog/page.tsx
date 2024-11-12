@@ -39,7 +39,7 @@ export default function BlogPage() {
 
                   <div className="flex min-h-20 flex-col justify-around gap-4">
                     {blog.title && (
-                      <h2 className="text-2xl font-semibold text-primary">
+                      <h2 className="text-2xl font-semibold text-white">
                         {blog.title}
                       </h2>
                     )}

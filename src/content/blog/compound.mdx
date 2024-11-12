@@ -1,13 +1,80 @@
 ---
 title: "Compound Components in React"
 description: "Compound Components is a powerful React pattern that helps create flexible and maintainable component APIs. Learn how to implement this pattern to build more intuitive and reusable UI components while following React best practices."
-date: "2024-02-09"
+date: "2024-11-12"
 author: "ruijadom"
 ---
 
-## Introduction
+## The Problem with Traditional Component Design
 
-Compound Components is a powerful design pattern in React that allows you to create flexible and reusable components with a more intuitive and expressive API. In this post, we'll explore what compound components are, why they're useful, and how to implement them effectively.
+Let's look at a common scenario when building a dropdown component:
+
+```jsx
+function Dropdown({
+  options,
+  selectedOption,
+  onSelect,
+  triggerLabel = "Select an option",
+  customTriggerStyle,
+  optionsContainerStyle,
+  renderOption,
+  // ... more props
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="dropdown">
+      <button style={customTriggerStyle} onClick={() => setIsOpen(!isOpen)}>
+        {selectedOption?.label || triggerLabel}
+      </button>
+      {isOpen && (
+        <div style={optionsContainerStyle}>
+          {options.map((option) => (
+            <div
+              key={option.value}
+              onClick={() => {
+                onSelect(option);
+                setIsOpen(false);
+              }}
+            >
+              {renderOption ? renderOption(option) : option.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+This traditional approach has several limitations:
+
+1. **Prop Explosion**: As the component grows, we need more and more props to handle different use cases
+2. **Inflexible Layout**: The structure is fixed - you can't easily change the order or placement of the trigger and options
+3. **Limited Customization**: Even with style props and render props, customizing complex behaviors requires exposing more internal state
+4. **Poor Developer Experience**: The API becomes confusing with numerous optional props
+
+Here's how you might use this component:
+
+```jsx
+function App() {
+  return (
+    <Dropdown
+      options={[
+        { value: "1", label: "Option 1" },
+        { value: "2", label: "Option 2" },
+      ]}
+      selectedOption={selectedOption}
+      onSelect={handleSelect}
+      customTriggerStyle={{ background: "blue" }}
+      optionsContainerStyle={{ maxHeight: "200px" }}
+      renderOption={(option) => (
+        <div className="custom-option">{option.label}</div>
+      )}
+    />
+  );
+}
+```
 
 ## What are Compound Components?
 
@@ -31,18 +98,18 @@ import React, { createContext, useContext, useState } from "react";
 const ToggleContext = createContext();
 
 // Main component
-function Toggle({ children, onToggle }) {
-  const [on, setOn] = useState(false);
+function Toggle({ children, onChange }) {
+  const [active, setActive] = useState(false);
 
   const toggle = () => {
-    setOn(!on);
-    if (onToggle) {
-      onToggle(!on);
+    setActive(!active);
+    if (onChange) {
+      onChange(!active);
     }
   };
 
   return (
-    <ToggleContext.Provider value={{ on, toggle }}>
+    <ToggleContext.Provider value={{ active, toggle }}>
       {children}
     </ToggleContext.Provider>
   );
@@ -50,15 +117,15 @@ function Toggle({ children, onToggle }) {
 
 // Child components
 Toggle.Button = function ToggleButton() {
-  const { on, toggle } = useContext(ToggleContext);
+  const { active, toggle } = useContext(ToggleContext);
 
-  return <button onClick={toggle}>{on ? "ON" : "OFF"}</button>;
+  return <button onClick={toggle}>{active ? "ON" : "OFF"}</button>;
 };
 
 Toggle.Display = function ToggleDisplay() {
-  const { on } = useContext(ToggleContext);
+  const { active } = useContext(ToggleContext);
 
-  return <div>The toggle is: {on ? "ON" : "OFF"}</div>;
+  return <div>The toggle is: {active ? "ON" : "OFF"}</div>;
 };
 ```
 
@@ -69,7 +136,7 @@ Here's how you would use the compound components we just created:
 ```jsx
 function App() {
   return (
-    <Toggle onToggle={(state) => console.log(`Toggle state: ${state}`)}>
+    <Toggle onChange={(state) => console.log(`Toggle state: ${state}`)}>
       <Toggle.Display />
       <Toggle.Button />
     </Toggle>
