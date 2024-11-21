@@ -21,6 +21,7 @@ export const Toc = () => {
   }, []);
 
   return (
+    // eslint-disable-next-line tailwindcss/no-custom-classname
     <div className="js-toc sticky top-1/2 ml-8 hidden w-64 -translate-y-1/2 break-words xl:block"></div>
   );
 };
