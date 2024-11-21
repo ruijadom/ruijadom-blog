@@ -39,7 +39,7 @@ export default function AboutPage() {
                   target="_blank"
                   className={cn(
                     buttonVariants({ variant: "ghost" }),
-                    "text-primary px-0 hover:bg-primary transition-colors rounded-full p-2 size-8 bg-primary/80",
+                    "text-primary px-0 hover:bg-primary transition-colors rounded-full p-2 size-8 bg-primary/80"
                   )}
                 >
                   <social.icon className="size-6" />
@@ -50,14 +50,14 @@ export default function AboutPage() {
           </div>
         </div>
         <p className="flex-1 text-center text-sm text-muted-foreground lg:text-start xl:text-base">
-          As a senior front-end developer, I thrive on crafting intuitive
-          digital experiences that solve real-world problems. My expertise lies
-          in translating complex designs into elegant, high-performance
-          interfaces that delight users. With a strong foundation in web and
-          mobile development, I deliver scalable solutions that not only look
-          great but also function flawlessly. My experience in design systems,
-          and micro frontends allows me to create cohesive and maintainable
-          digital products.
+          As a front-end developer, I thrive on crafting intuitive digital
+          experiences that solve real-world problems. My expertise lies in
+          translating complex designs into elegant, high-performance interfaces
+          that delight users. With a strong foundation in web and mobile
+          development, I deliver scalable solutions that not only look great but
+          also function flawlessly. My experience in design systems, and micro
+          frontends allows me to create cohesive and maintainable digital
+          products.
         </p>
       </div>
     </div>
