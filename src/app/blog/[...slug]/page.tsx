@@ -10,6 +10,7 @@ import { Mdx } from "@/components/mdx-component";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
+import { Toc } from "@/components/toc";
 
 interface BlogPageItemProps {
   params: {
@@ -63,6 +64,9 @@ export default async function BlogPageItem({ params }: BlogPageItemProps) {
 
   return (
     <article className="container relative max-w-3xl py-6 lg:py-10">
+      <aside>
+        <Toc />
+      </aside>
       <div>
         {blog.date && (
           <time

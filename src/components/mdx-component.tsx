@@ -4,6 +4,7 @@ import React, { HTMLAttributes } from "react";
 import * as runtime from "react/jsx-runtime";
 
 import Image from "next/image";
+import { Toc } from "./toc";
 
 const useMDXComponent = (code: string) => {
   const fn = new Function(code);
@@ -159,6 +160,7 @@ const components = {
       {...props}
     />
   ),
+  Toc,
   Image,
 };
 
@@ -177,7 +179,7 @@ export function Mdx({ code }: MdxProps) {
 
   return (
     <div>
-      <Component components={components} />
+      <Component components={components} co />
     </div>
   );
 }
