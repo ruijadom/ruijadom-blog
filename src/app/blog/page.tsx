@@ -16,7 +16,7 @@ export default function BlogPage() {
     .filter((blog) => blog.published)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   return (
-    <div className="container max-w-4xl py-6 lg:py-10">
+    <main className="container max-w-4xl py-6 lg:py-10">
       <PageHeader
         title="Blog"
         description="Let`s dive in and explore the exciting world of frontend development"
@@ -24,43 +24,41 @@ export default function BlogPage() {
       <hr className="my-8" />
 
       {blogs.length ? (
-        <div className="space-y-8">
+        <section className="space-y-8">
           {blogs.map((blog) => (
             <Spotlight className="group" key={blog.slug}>
-              <SpotlightCard>
-                <article className="relative z-20 size-full cursor-pointer overflow-hidden rounded-[inherit] bg-background p-4">
-                  {/* Radial gradient */}
-                  <div
-                    className="pointer-events-none absolute bottom-0 left-1/2 -z-10 aspect-square w-1/2 -translate-x-1/2 translate-y-1/2"
-                    aria-hidden="true"
-                  >
-                    <div className="translate-z-0 absolute inset-0 rounded-full bg-accent/50 blur-[80px]"></div>
-                  </div>
+              <Link href={blog.slug} className="block rounded-2xl">
+                <SpotlightCard>
+                  <div className="relative z-20 size-full overflow-hidden rounded-[inherit] bg-background p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                    {/* Radial gradient */}
+                    <div
+                      className="pointer-events-none absolute bottom-0 left-1/2 -z-10 aspect-square w-1/2 -translate-x-1/2 translate-y-1/2"
+                      aria-hidden="true"
+                    >
+                      <div className="translate-z-0 absolute inset-0 rounded-full bg-accent/50 blur-[80px]"></div>
+                    </div>
 
-                  <div className="flex min-h-20 flex-col justify-around gap-4">
-                    {blog.title && (
-                      <h2 className="text-2xl font-semibold text-white">
-                        {blog.title}
-                      </h2>
-                    )}
-                    {blog.date && (
-                      <p className="text-sm text-muted-foreground/60">
-                        {formatDate(blog.date)}
-                      </p>
-                    )}
+                    <div className="flex min-h-20 flex-col justify-around gap-4">
+                      {blog.title && (
+                        <h2 className="text-2xl font-semibold text-white">
+                          {blog.title}
+                        </h2>
+                      )}
+                      {blog.date && (
+                        <p className="text-sm text-muted-foreground/60">
+                          {formatDate(blog.date)}
+                        </p>
+                      )}
+                    </div>
                   </div>
-
-                  <Link href={blog.slug} className="absolute inset-0">
-                    <span className="sr-only">View Article</span>
-                  </Link>
-                </article>
-              </SpotlightCard>
+                </SpotlightCard>
+              </Link>
             </Spotlight>
           ))}
-        </div>
+        </section>
       ) : (
         <p>No Blogs found</p>
       )}
-    </div>
+    </main>
   );
 }
