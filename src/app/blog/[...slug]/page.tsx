@@ -73,7 +73,7 @@ export default async function BlogPageItem({ params }: BlogPageItemProps) {
           </time>
         )}
 
-        <h1 className="mt-2 inline-block text-4xl font-bold capitalize leading-tight text-white lg:text-4xl">
+        <h1 className="mt-2 inline-block text-4xl font-bold capitalize leading-tight text-foreground lg:text-4xl">
           {blog.title}
         </h1>
 
