@@ -42,7 +42,7 @@ export default function SiteHeader() {
       ([entry]) => {
         setShowTitle(!entry.isIntersecting);
       },
-      { threshold: 0 }
+      { threshold: 0 },
     );
 
     const blogTitle = document.querySelector("[data-blog-time]");
