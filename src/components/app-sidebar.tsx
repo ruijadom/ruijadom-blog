@@ -28,10 +28,10 @@ export function AppSidebar() {
                 <SidebarMenuItem
                   key={label + path}
                   className={cn(
-                    "font-normal hover:text-primary transition-colors flex items-center",
+                    "font-norma hover:text-primary transition-colors flex items-center",
                     `/${segment}` === path
                       ? "text-primary"
-                      : "text-muted-foreground",
+                      : "text-muted-foreground"
                   )}
                 >
                   <SidebarMenuButton asChild>

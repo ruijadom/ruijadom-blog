@@ -17,7 +17,7 @@ interface BlogPageItemProps {
   };
 }
 
-async function getBlogFromParams(params: BlogPageItemProps["params"]) {
+export async function getBlogFromParams(params: BlogPageItemProps["params"]) {
   const slug = params?.slug.join("/");
   const blog = allBlogs.find((blog) => blog.slugAsParams === slug);
 
@@ -66,6 +66,7 @@ export default async function BlogPageItem({ params }: BlogPageItemProps) {
       <div>
         {blog.date && (
           <time
+            data-blog-time
             dateTime={blog.date}
             className="block text-sm text-muted-foreground"
           >
