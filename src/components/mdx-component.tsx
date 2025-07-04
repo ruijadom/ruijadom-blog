@@ -177,7 +177,7 @@ export function Mdx({ code }: MdxProps) {
 
   return (
     <div>
-      <Component components={components} co />
+      <Component components={components} />
     </div>
   );
 }
