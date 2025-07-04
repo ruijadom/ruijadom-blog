@@ -1,0 +1,147 @@
+---
+title: "How to Build a Modern Global Store Using Only React"
+description: "Learn how to create a lightweight, efficient, and modern global state store with React's built-in hooks—no Redux, Zustand, or Context API required."
+date: "2025-07-04"
+author: "ruijadom"
+---
+
+## Introduction
+Many React applications need a **global state** shared between components without prop drilling or adding heavy dependencies like Redux or Zustand. But is it possible to create a simple, performant, and modern global store **using only React**, without external libraries or even Context API?
+
+Besides being a practical solution, this is also a great opportunity to understand how popular state management libraries work under the hood, since many of them use React's native APIs.
+
+
+## Why Avoid Context or External Libraries?
+
+* React Context can cause unnecessary re-renders across the whole component tree consuming it, especially with frequent state changes.
+* Libraries like Redux and Zustand add external dependencies and complexity.
+* We want something simple, lightweight, and using modern React APIs.
+
+
+## Creating Our createStore Function
+
+Let's create a function `createStore` that generates a global store. It will have:
+
+* Private internal state
+* Functions to read (`get`), update (`set`), and subscribe (`subscribe`) to state changes
+* A React hook `useStore` to consume reactive slices of the state
+
+Here's the code:
+
+```ts
+import { useSyncExternalStore } from 'react'
+
+type Listener = () => void
+
+export function createStore<T extends object>(initialState: T) {
+  let state = initialState
+  const listeners = new Set<Listener>()
+
+  function get() {
+    return state
+  }
+
+  function set(partial: Partial<T> | ((prev: T) => Partial<T>)) {
+    const update = typeof partial === 'function' ? partial(state) : partial
+    state = { ...state, ...update }
+    listeners.forEach(listener => listener())
+  }
+
+  function subscribe(listener: Listener) {
+    listeners.add(listener)
+    return () => listeners.delete(listener)
+  }
+
+  function useStore<U>(selector: (state: T) => U) {
+    return useSyncExternalStore(subscribe, () => selector(state))
+  }
+
+  return { get, set, subscribe, useStore }
+}
+```
+
+## How to Use the Store
+
+Create a simple counter store in `store/counter.ts`:
+
+```ts
+import { createStore } from '../lib/store'
+
+type CounterState = {
+  count: number
+}
+
+export const counterStore = createStore<CounterState>({
+  count: 0,
+})
+```
+
+Then in your React component consume it like this:
+
+```tsx
+import { counterStore } from './store/counter'
+
+export function Counter() {
+  const count = counterStore.useStore(state => state.count)
+
+  return (
+    <div>
+      <h1>Count: {count}</h1>
+      <button onClick={() => counterStore.set(s => ({ count: s.count - 1 }))}>–</button>
+      <button onClick={() => counterStore.set(s => ({ count: s.count + 1 }))}>+</button>
+    </div>
+  )
+}
+```
+
+This pattern provides:
+
+* Global access to state without passing props
+* Components only re-render when the selected slice changes
+* A simple, Zustand-like API
+
+## Global State
+
+This store lives outside the React tree:
+
+* The state is a singleton: there is only **one instance** shared globally.
+* No need for a Provider wrapper.
+* Cannot create multiple isolated instances of the same store.
+
+If you need isolated scopes, combine with React Context or create store factories.
+
+## Why This Is a Great Opportunity to Understand Popular Stores
+
+Besides being simple and efficient, this pattern is a great chance to see **how popular global state libraries work under the hood**.
+
+For example, **Zustand** and modern **Redux** internally use `useSyncExternalStore` to connect their stores to React efficiently and selectively. By building your own store with this API, you get hands-on understanding of the core techniques used in widely adopted libs.
+
+## Advantages and Caveats
+
+### Advantages
+
+* Zero external dependencies
+* Simple and intuitive API
+* Avoids full tree re-renders caused by Context
+* Built on official, stable React API
+
+### Caveats
+
+* Global singleton state can complicate multi-tenant apps or isolated testing
+* Persistence and middleware must be implemented manually
+* State immutability is important to avoid bugs
+
+## Next Steps
+
+You can extend this pattern to:
+
+* Create multiple stores (`userStore`, `settingsStore`)
+* Add persistence with `localStorage`
+* Implement middlewares for logging or DevTools
+* Create advanced selectors to optimize re-renders
+
+## Conclusion
+
+With just a few lines and the right React API, you can create a modern, lightweight, performant global store without external dependencies. This pattern fits many React apps perfectly.
+
+Try it in your next project and enjoy simple, effective global state management!
