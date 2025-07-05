@@ -17,7 +17,7 @@ interface BlogPageItemProps {
   };
 }
 
-export async function getBlogFromParams(params: BlogPageItemProps["params"]) {
+async function getBlogFromParams(params: BlogPageItemProps["params"]) {
   const slug = params?.slug.join("/");
   const blog = allBlogs.find((blog) => blog.slugAsParams === slug);
 
@@ -58,7 +58,7 @@ export default async function BlogPageItem({ params }: BlogPageItemProps) {
   const blog = await getBlogFromParams(params);
 
   if (!blog) {
-    return {};
+    return <div>Blog not found</div>;
   }
 
   return (
