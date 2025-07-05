@@ -10,13 +10,11 @@ Many React applications need a **global state** shared between components withou
 
 Besides being a practical solution, this is also a great opportunity to understand how popular state management libraries work under the hood, since many of them use React's native APIs.
 
-
 ## Why Avoid Context or External Libraries?
 
 * React Context can cause unnecessary re-renders across the whole component tree consuming it, especially with frequent state changes.
 * Libraries like Redux and Zustand add external dependencies and complexity.
 * We want something simple, lightweight, and using modern React APIs.
-
 
 ## Creating Our createStore Function
 
@@ -93,6 +91,22 @@ export function Counter() {
   )
 }
 ```
+
+## Example
+
+See the global store in action in this interactive example:
+
+<CodeSandbox 
+  sandboxId="734chc"
+  title="Advanced Global Store"
+  height={600}
+  theme="dark"
+  options={{
+    fontsize: 12,
+    hidenavigation: false,
+    expanddevtools: true
+  }}
+/>
 
 This pattern provides:
 

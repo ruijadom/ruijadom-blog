@@ -4,6 +4,7 @@ import React, { HTMLAttributes } from "react";
 import * as runtime from "react/jsx-runtime";
 
 import Image from "next/image";
+import { CodeSandbox, CodeSandboxEmbed } from "./codesandbox";
 
 const useMDXComponent = (code: string) => {
   const fn = new Function(code);
@@ -160,6 +161,8 @@ const components = {
     />
   ),
   Image,
+  CodeSandbox,
+  CodeSandboxEmbed,
 };
 
 interface MdxProps {
@@ -169,7 +172,7 @@ interface MdxProps {
 
 export function MDXContent({ code, components }: MdxProps) {
   const Component = useMDXComponent(code);
-  return <Component components={{ Image, ...components }} />;
+  return <Component components={{ Image, CodeSandbox, CodeSandboxEmbed, ...components }} />;
 }
 
 export function Mdx({ code }: MdxProps) {
