@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 
 interface CodeSandboxProps {
@@ -92,38 +92,8 @@ export function CodeSandbox({
   const [error, setError] = useState<string | null>(null);
   const [sandboxUrl, setSandboxUrl] = useState<string>('');
 
-  useEffect(() => {
-    const createSandboxUrl = async () => {
-      try {
-        if (src) {
-          // If src is a full URL
-          if (src.startsWith('http')) {
-            setSandboxUrl(src);
-          } else {
-            // If src is just an ID
-            setSandboxUrl(`https://codesandbox.io/embed/${src}`);
-          }
-        } else if (sandboxId) {
-          setSandboxUrl(`https://codesandbox.io/embed/${sandboxId}`);
-        } else if (files) {
-          // Create dynamic sandbox
-          const dynamicUrl = await createDynamicSandbox();
-          setSandboxUrl(dynamicUrl);
-        } else {
-          // Empty template
-          setSandboxUrl(`https://codesandbox.io/embed/new?template=${template}`);
-        }
-      } catch (err) {
-        setError('Error creating sandbox URL');
-        setIsLoading(false);
-      }
-    };
-
-    createSandboxUrl();
-  }, [src, sandboxId, template, files, dependencies]);
-
   // Function to create dynamic sandbox using CodeSandbox API
-  const createDynamicSandbox = async (): Promise<string> => {
+  const createDynamicSandbox = useCallback(async (): Promise<string> => {
     if (!files) throw new Error('Files not provided');
 
     const sandboxData = {
@@ -186,7 +156,37 @@ export function CodeSandbox({
       const parameters = btoa(JSON.stringify(sandboxData));
       return `https://codesandbox.io/api/v1/sandboxes/define?parameters=${parameters}`;
     }
-  };
+  }, [files, dependencies]);
+
+  useEffect(() => {
+    const createSandboxUrl = async () => {
+      try {
+        if (src) {
+          // If src is a full URL
+          if (src.startsWith('http')) {
+            setSandboxUrl(src);
+          } else {
+            // If src is just an ID
+            setSandboxUrl(`https://codesandbox.io/embed/${src}`);
+          }
+        } else if (sandboxId) {
+          setSandboxUrl(`https://codesandbox.io/embed/${sandboxId}`);
+        } else if (files) {
+          // Create dynamic sandbox
+          const dynamicUrl = await createDynamicSandbox();
+          setSandboxUrl(dynamicUrl);
+        } else {
+          // Empty template
+          setSandboxUrl(`https://codesandbox.io/embed/new?template=${template}`);
+        }
+      } catch (err) {
+        setError('Error creating sandbox URL');
+        setIsLoading(false);
+      }
+    };
+
+    createSandboxUrl();
+  }, [src, sandboxId, template, files, dependencies, createDynamicSandbox]);
 
   // Build URL parameters
   const buildUrlParams = () => {
@@ -237,7 +237,7 @@ export function CodeSandbox({
             href={sandboxUrl.replace('/embed/', '/s/')}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
             Open in CodeSandbox ↗
           </a>
@@ -247,11 +247,11 @@ export function CodeSandbox({
       <div className="relative overflow-hidden rounded-lg border bg-background">
         {isLoading && (
           <div 
-            className="absolute inset-0 flex items-center justify-center bg-background/95 z-10"
+            className="absolute inset-0 z-10 flex items-center justify-center bg-background/95"
             style={{ height: `${height}px` }}
           >
             <div className="flex items-center space-x-3">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+              <div className="size-5 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
               <span className="text-sm text-muted-foreground">Loading sandbox...</span>
             </div>
           </div>
@@ -265,7 +265,7 @@ export function CodeSandbox({
             <div className="space-y-3">
               <p className="text-sm text-red-500">{error}</p>
               <p className="text-xs text-muted-foreground">
-                Check if the sandbox ID is correct and if it's public
+                Check if the sandbox ID is correct and if it&apos;s public
               </p>
               {sandboxUrl && (
                 <a
