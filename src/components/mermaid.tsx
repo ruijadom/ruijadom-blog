@@ -93,6 +93,8 @@ export function Mermaid({ chart, className = '' }: MermaidProps) {
               minZoom: 0.5,
               maxZoom: 10,
               zoomScaleSensitivity: 0.3,
+              mouseWheelZoomEnabled: false, // Disable scroll zoom
+              preventMouseEventsDefault: false, // Allow normal scroll behavior
             })
             setIsReady(true)
           } catch (error) {
@@ -188,7 +190,7 @@ export function Mermaid({ chart, className = '' }: MermaidProps) {
             Reset
           </button>
           <span className="ml-2 text-xs text-muted-foreground">
-            💡 Drag to pan • Scroll to zoom
+            💡 Drag to pan • Use buttons to zoom
           </span>
         </div>
       )}

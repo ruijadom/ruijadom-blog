@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 
 import Image from "next/image";
 import { CodeSandbox, CodeSandboxEmbed } from "./codesandbox";
+import { Callout } from "./callout";
 
 const Mermaid = dynamic(() => import("./mermaid").then((mod) => mod.Mermaid), {
   ssr: false,
@@ -170,6 +171,7 @@ const components = {
   CodeSandbox,
   CodeSandboxEmbed,
   Mermaid,
+  Callout,
 };
 
 interface MdxProps {
@@ -179,7 +181,7 @@ interface MdxProps {
 
 export function MDXContent({ code, components }: MdxProps) {
   const Component = useMDXComponent(code);
-  return <Component components={{ Image, CodeSandbox, CodeSandboxEmbed, Mermaid, ...components }} />;
+  return <Component components={{ Image, CodeSandbox, CodeSandboxEmbed, Mermaid, Callout, ...components }} />;
 }
 
 export function Mdx({ code }: MdxProps) {

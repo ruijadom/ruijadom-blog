@@ -5,8 +5,6 @@ date: "2025-12-08"
 author: "ruijadom"
 ---
 
-# Micro-Frontends with Vite: Scaling Teams and Codebases
-
 Modern frontend applications are growing in complexity, and so are the teams building them. When multiple teams need to work on different features of the same application, traditional monolithic architectures can become bottlenecks. Enter micro-frontends: an architectural pattern that brings the principles of microservices to the frontend world.
 
 In this post, we'll explore how to implement micro-frontends using Vite and Module Federation, and why this approach can transform how your frontend team operates.
@@ -17,7 +15,7 @@ Micro-frontends extend the concept of microservices to frontend development. Ins
 
 ### Monolithic vs Micro-Frontend Architecture
 
-**Monolithic Frontend:**
+#### **Monolithic Frontend:**
 
 <Mermaid chart={`
 graph LR
@@ -43,11 +41,11 @@ graph LR
     style Deploy fill:#dc2626,stroke:#991b1b
 `} />
 
-❌ Tight coupling between features  
-❌ Coordination required for deployments  
-❌ Single point of failure
+- Tight coupling between features  
+- Coordination required for deployments  
+- Single point of failure
 
-**Micro-Frontend Architecture:**
+#### **Micro-Frontend Architecture:**
 
 <Mermaid chart={`
 graph TB
@@ -63,11 +61,6 @@ graph TB
     style MFE3 fill:#334155,stroke:#10b981,stroke-width:2px
 `} />
 
-✅ Independent development  
-✅ Deploy features separately  
-✅ Team autonomy and ownership  
-✅ Technology flexibility
-
 Each micro-frontend:
 - Can be developed independently
 - Has its own deployment pipeline
@@ -78,45 +71,65 @@ Each micro-frontend:
 
 Before diving into implementation, it's crucial to understand that micro-frontends aren't a silver bullet. They add architectural complexity and should only be adopted when the benefits clearly outweigh the costs.
 
-### ✅ Use Micro-Frontends When:
+### Use Micro-Frontends When:
+
+<Callout type="success">
 
 **You have multiple autonomous teams**
+
 If you have 3+ frontend teams working on different domains (e.g., search, booking, payments), micro-frontends enable parallel development without coordination bottlenecks. Each team can own their domain end-to-end.
 
 **Your application has clear domain boundaries**
+
 Successful micro-frontends map to business domains. If you can't draw clear lines between features (e.g., "this is the search module, this is the booking module"), the architecture will fight against you.
 
 **You need independent deployment cycles**
+
 When the booking team needs to deploy bug fixes without waiting for the payment team to finish their sprint, independent deployments become valuable. This is especially critical for large organizations with compliance requirements.
 
 **Different features have different scaling needs**
+
 Perhaps your search feature needs frequent updates and optimization, while your reviews page is stable. Micro-frontends allow you to allocate resources proportionally.
 
 **You're managing technical debt incrementally**
+
 Migrating from a legacy framework? Micro-frontends let you rewrite piece by piece. Keep the old admin panel in AngularJS while building new features in React.
 
 **You have a long-lived, complex application**
+
 If you're building a platform that will evolve over 5-10 years with changing teams, micro-frontends provide the flexibility to adapt without full rewrites.
 
-### ❌ Avoid Micro-Frontends When:
+</Callout>
+
+### Avoid Micro-Frontends When:
+
+<Callout type="error">
 
 **You have a small team (< 8 developers)**
+
 The coordination overhead of multiple repositories, build pipelines, and integration testing will slow you down. A well-structured monolith with clear module boundaries is simpler and more efficient.
 
 **Your application is in early stages**
+
 If you're still finding product-market fit or your features are rapidly changing, the rigidity of micro-frontend boundaries will hinder experimentation. Start with a monolith and extract later if needed.
 
 **Domain boundaries are unclear**
+
 If features are tightly coupled and constantly need to share state or UI components, splitting them into micro-frontends creates artificial boundaries that lead to brittle integration code.
 
 **You lack DevOps maturity**
+
 Micro-frontends require robust CI/CD pipelines, monitoring, and version management. If you're still deploying manually or don't have proper logging, fix your infrastructure first.
 
 **Performance is your top priority**
+
 Micro-frontends introduce runtime overhead: additional JavaScript for module loading, potential duplicate dependencies, and complexity in code splitting. A well-optimized monolith will almost always be faster.
 
 **You can't afford the maintenance cost**
+
 More repositories mean more dependencies to update, more security patches, more documentation to maintain. Make sure you have the resources to manage this complexity.
+
+</Callout>
 
 ### The Pragmatic Approach
 
@@ -418,10 +431,6 @@ Counter-intuitively, micro-frontends can improve performance:
 - Parallel loading of independent bundles
 - Better caching (update one MFE without invalidating others)
 - Code splitting happens naturally at MFE boundaries
-
-## Challenges and Best Practices
-
-Micro-frontends aren't without challenges. Here's how to address them:
 
 ### Shared Dependencies
 
