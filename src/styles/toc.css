@@ -1,0 +1,62 @@
+/* Table of Contents Styles */
+.toc {
+  overflow-y: auto;
+  max-height: calc(100vh - 200px);
+}
+
+.toc ol {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.toc li {
+  margin: 0;
+  padding: 0;
+}
+
+.toc a {
+  display: block;
+  padding: 0.25rem 0;
+  color: hsl(var(--muted-foreground));
+  text-decoration: none;
+  transition: color 0.2s;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.toc a:hover {
+  color: hsl(var(--foreground));
+}
+
+.toc .is-active-link {
+  color: hsl(var(--primary));
+  font-weight: 500;
+}
+
+.toc .toc-list {
+  padding-left: 0;
+}
+
+.toc .toc-list .toc-list {
+  padding-left: 1rem;
+  margin-top: 0.25rem;
+}
+
+/* Scrollbar styling */
+.toc::-webkit-scrollbar {
+  width: 4px;
+}
+
+.toc::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.toc::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 2px;
+}
+
+.toc::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
