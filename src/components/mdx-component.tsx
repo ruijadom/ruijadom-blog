@@ -2,16 +2,11 @@
 import { cn } from "@/lib/utils";
 import React, { HTMLAttributes } from "react";
 import * as runtime from "react/jsx-runtime";
-import dynamic from "next/dynamic";
 
 import Image from "next/image";
 import { CodeSandbox, CodeSandboxEmbed } from "./codesandbox";
 import { Callout } from "./callout";
-
-const Mermaid = dynamic(() => import("./mermaid").then((mod) => mod.Mermaid), {
-  ssr: false,
-  loading: () => <div className="my-8 flex h-[500px] items-center justify-center text-muted-foreground">Loading diagram...</div>,
-});
+import { Mermaid } from "./mermaid-wrapper";
 
 const useMDXComponent = (code: string) => {
   const fn = new Function(code);
