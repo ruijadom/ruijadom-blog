@@ -2,9 +2,15 @@
 import { cn } from "@/lib/utils";
 import React, { HTMLAttributes } from "react";
 import * as runtime from "react/jsx-runtime";
+import dynamic from "next/dynamic";
 
 import Image from "next/image";
 import { CodeSandbox, CodeSandboxEmbed } from "./codesandbox";
+
+const Mermaid = dynamic(() => import("./mermaid").then((mod) => mod.Mermaid), {
+  ssr: false,
+  loading: () => <div className="my-8 flex h-[500px] items-center justify-center text-muted-foreground">Loading diagram...</div>,
+});
 
 const useMDXComponent = (code: string) => {
   const fn = new Function(code);
@@ -163,6 +169,7 @@ const components = {
   Image,
   CodeSandbox,
   CodeSandboxEmbed,
+  Mermaid,
 };
 
 interface MdxProps {
@@ -172,7 +179,7 @@ interface MdxProps {
 
 export function MDXContent({ code, components }: MdxProps) {
   const Component = useMDXComponent(code);
-  return <Component components={{ Image, CodeSandbox, CodeSandboxEmbed, ...components }} />;
+  return <Component components={{ Image, CodeSandbox, CodeSandboxEmbed, Mermaid, ...components }} />;
 }
 
 export function Mdx({ code }: MdxProps) {

@@ -73,3 +73,54 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Mermaid Diagram Styles */
+@layer components {
+  .mermaid {
+    @apply w-full;
+    min-height: 300px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .mermaid svg {
+    max-width: 100%;
+    height: auto !important;
+    min-height: 300px;
+    display: block;
+  }
+
+  /* Increase node sizes */
+  .mermaid .node rect,
+  .mermaid .node circle,
+  .mermaid .node ellipse,
+  .mermaid .node polygon {
+    @apply stroke-2;
+  }
+
+  /* Improve text readability */
+  .mermaid text {
+    font-size: 16px !important;
+    font-family: var(--font-lexend), sans-serif !important;
+  }
+
+  /* Subgraph styling */
+  .mermaid .cluster rect {
+    @apply stroke-2;
+    rx: 8px;
+    ry: 8px;
+  }
+
+  /* Arrow styling */
+  .mermaid .edgePath .path {
+    @apply stroke-2;
+  }
+
+  /* Responsive scaling */
+  @media (max-width: 768px) {
+    .mermaid svg {
+      min-height: 250px;
+    }
+  }
+}

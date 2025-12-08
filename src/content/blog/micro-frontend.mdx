@@ -1,0 +1,483 @@
+---
+title: "Micro-Frontends: Scaling Teams and Codebases"
+description: "Learn how to implement micro-frontends using Vite and Module Federation, and why this approach can transform how your frontend team operates."
+date: "2025-12-08"
+author: "ruijadom"
+---
+
+# Micro-Frontends with Vite: Scaling Teams and Codebases
+
+Modern frontend applications are growing in complexity, and so are the teams building them. When multiple teams need to work on different features of the same application, traditional monolithic architectures can become bottlenecks. Enter micro-frontends: an architectural pattern that brings the principles of microservices to the frontend world.
+
+In this post, we'll explore how to implement micro-frontends using Vite and Module Federation, and why this approach can transform how your frontend team operates.
+
+## What Are Micro-Frontends?
+
+Micro-frontends extend the concept of microservices to frontend development. Instead of building a single monolithic frontend application, you split it into smaller, independently deployable pieces that are owned by different teams.
+
+### Monolithic vs Micro-Frontend Architecture
+
+**Monolithic Frontend:**
+
+<Mermaid chart={`
+graph LR
+    subgraph Monolith["Monolithic Frontend"]
+        direction LR
+        Single["Single Codebase"]
+        Single --> Features
+        
+        subgraph Features["All Features"]
+            direction LR
+            Search["Search"]
+            Booking["Booking"]
+            Payment["Payment"]
+            Reviews["Reviews"]
+        end
+        
+        Features --> Deploy["Single Deployment<br/>Pipeline"]
+    end
+    
+    style Monolith fill:#1e293b,stroke:#475569,stroke-width:2px
+    style Single fill:#334155,stroke:#64748b
+    style Features fill:#1e293b,stroke:#64748b,stroke-width:1px
+    style Deploy fill:#dc2626,stroke:#991b1b
+`} />
+
+❌ Tight coupling between features  
+❌ Coordination required for deployments  
+❌ Single point of failure
+
+**Micro-Frontend Architecture:**
+
+<Mermaid chart={`
+graph TB
+    Host["Host Shell<br/>(Orchestrator)"]
+    
+    Host --> MFE1["Search MFE<br/>━━━━━━━━━<br/>Team A<br/>Own Repo<br/>Own Deploy"]
+    Host --> MFE2["Booking MFE<br/>━━━━━━━━━<br/>Team B<br/>Own Repo<br/>Own Deploy"]
+    Host --> MFE3["Payment MFE<br/>━━━━━━━━━<br/>Team C<br/>Own Repo<br/>Own Deploy"]
+    
+    style Host fill:#1e293b,stroke:#3b82f6,stroke-width:3px
+    style MFE1 fill:#334155,stroke:#10b981,stroke-width:2px
+    style MFE2 fill:#334155,stroke:#10b981,stroke-width:2px
+    style MFE3 fill:#334155,stroke:#10b981,stroke-width:2px
+`} />
+
+✅ Independent development  
+✅ Deploy features separately  
+✅ Team autonomy and ownership  
+✅ Technology flexibility
+
+Each micro-frontend:
+- Can be developed independently
+- Has its own deployment pipeline
+- Can use different frameworks or versions (though this requires careful consideration)
+- Is owned by a specific team with domain expertise
+
+## Should You Use Micro-Frontends?
+
+Before diving into implementation, it's crucial to understand that micro-frontends aren't a silver bullet. They add architectural complexity and should only be adopted when the benefits clearly outweigh the costs.
+
+### ✅ Use Micro-Frontends When:
+
+**You have multiple autonomous teams**
+If you have 3+ frontend teams working on different domains (e.g., search, booking, payments), micro-frontends enable parallel development without coordination bottlenecks. Each team can own their domain end-to-end.
+
+**Your application has clear domain boundaries**
+Successful micro-frontends map to business domains. If you can't draw clear lines between features (e.g., "this is the search module, this is the booking module"), the architecture will fight against you.
+
+**You need independent deployment cycles**
+When the booking team needs to deploy bug fixes without waiting for the payment team to finish their sprint, independent deployments become valuable. This is especially critical for large organizations with compliance requirements.
+
+**Different features have different scaling needs**
+Perhaps your search feature needs frequent updates and optimization, while your reviews page is stable. Micro-frontends allow you to allocate resources proportionally.
+
+**You're managing technical debt incrementally**
+Migrating from a legacy framework? Micro-frontends let you rewrite piece by piece. Keep the old admin panel in AngularJS while building new features in React.
+
+**You have a long-lived, complex application**
+If you're building a platform that will evolve over 5-10 years with changing teams, micro-frontends provide the flexibility to adapt without full rewrites.
+
+### ❌ Avoid Micro-Frontends When:
+
+**You have a small team (< 8 developers)**
+The coordination overhead of multiple repositories, build pipelines, and integration testing will slow you down. A well-structured monolith with clear module boundaries is simpler and more efficient.
+
+**Your application is in early stages**
+If you're still finding product-market fit or your features are rapidly changing, the rigidity of micro-frontend boundaries will hinder experimentation. Start with a monolith and extract later if needed.
+
+**Domain boundaries are unclear**
+If features are tightly coupled and constantly need to share state or UI components, splitting them into micro-frontends creates artificial boundaries that lead to brittle integration code.
+
+**You lack DevOps maturity**
+Micro-frontends require robust CI/CD pipelines, monitoring, and version management. If you're still deploying manually or don't have proper logging, fix your infrastructure first.
+
+**Performance is your top priority**
+Micro-frontends introduce runtime overhead: additional JavaScript for module loading, potential duplicate dependencies, and complexity in code splitting. A well-optimized monolith will almost always be faster.
+
+**You can't afford the maintenance cost**
+More repositories mean more dependencies to update, more security patches, more documentation to maintain. Make sure you have the resources to manage this complexity.
+
+### The Pragmatic Approach
+
+Start with a monolith. Really. Even companies that successfully use micro-frontends today started with simpler architectures. Here's a practical path:
+
+1. **Build a modular monolith** - Organize your code into clear, decoupled modules with well-defined interfaces
+2. **Wait for the pain** - Only when you experience real coordination problems (merge conflicts, deployment blockages, team bottlenecks)
+3. **Extract strategically** - Begin with one or two clear, stable domains
+4. **Validate the approach** - If it solves your problems without creating worse ones, continue gradually
+
+Remember: the best architecture is the simplest one that solves your current problems. Micro-frontends solve organizational problems, not technical ones.
+
+## Why Vite for Micro-Frontends?
+
+Vite has emerged as a game-changer in the build tool landscape, and it's particularly well-suited for micro-frontend architectures:
+
+### Lightning-Fast Development
+Vite's ESM-based dev server provides near-instantaneous hot module replacement (HMR), even as your micro-frontends grow. Unlike traditional bundlers that rebuild entire chunks, Vite only needs to invalidate the specific module that changed.
+
+### Module Federation Support
+With plugins like `@originjs/vite-plugin-federation`, Vite supports Module Federation—the same technology that powers webpack's micro-frontend capabilities. This allows you to share code between applications at runtime without bundling everything together.
+
+### Optimized Production Builds
+Vite uses Rollup under the hood for production builds, generating highly optimized bundles with intelligent code splitting.
+
+## Setting Up Micro-Frontends with Vite
+
+Let's walk through a practical example. We'll create a host application and two remote micro-frontends.
+
+### Project Structure
+
+<Mermaid chart={`
+graph LR
+    subgraph Workspace
+        Host["host/<br/>(Main Container)"]
+        Remote1["remote-search/<br/>(Search MFE)"]
+        Remote2["remote-booking/<br/>(Booking MFE)"]
+    end
+    
+    Host -.->|imports at runtime| Remote1
+    Host -.->|imports at runtime| Remote2
+    
+    style Host fill:#1e293b,stroke:#3b82f6,stroke-width:2px
+    style Remote1 fill:#334155,stroke:#10b981,stroke-width:2px
+    style Remote2 fill:#334155,stroke:#10b981,stroke-width:2px
+`} />
+
+### Configuring a Remote Micro-Frontend
+
+First, let's set up the `remote-search` application:
+
+```bash
+npm create vite@latest remote-search -- --template react-ts
+cd remote-search
+npm install @originjs/vite-plugin-federation --save-dev
+```
+
+Configure `vite.config.ts`:
+
+```typescript
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import federation from '@originjs/vite-plugin-federation'
+
+export default defineConfig({
+  plugins: [
+    react(),
+    federation({
+      name: 'remote_search',
+      filename: 'remoteEntry.js',
+      exposes: {
+        './Search': './src/components/Search.tsx',
+      },
+      shared: ['react', 'react-dom']
+    })
+  ],
+  build: {
+    modulePreload: false,
+    target: 'esnext',
+    minify: false,
+    cssCodeSplit: false
+  },
+  server: {
+    port: 5001
+  }
+})
+```
+
+Create the Search component (`src/components/Search.tsx`):
+
+```typescript
+import { useState } from 'react'
+
+interface SearchFilters {
+  destination: string
+  checkIn: string
+  checkOut: string
+  guests: number
+}
+
+export default function Search() {
+  const [filters, setFilters] = useState<SearchFilters>({
+    destination: '',
+    checkIn: '',
+    checkOut: '',
+    guests: 1
+  })
+  const [isSearching, setIsSearching] = useState(false)
+
+  const handleSearch = () => {
+    setIsSearching(true)
+    // Simulate API call
+    setTimeout(() => {
+      console.log('Searching with filters:', filters)
+      setIsSearching(false)
+    }, 1000)
+  }
+
+  return (
+    <div className="search-container">
+      <h3>Search Hotels</h3>
+      
+      <div className="search-form">
+        <input
+          type="text"
+          placeholder="Destination"
+          value={filters.destination}
+          onChange={(e) => setFilters({ ...filters, destination: e.target.value })}
+        />
+        
+        <input
+          type="date"
+          value={filters.checkIn}
+          onChange={(e) => setFilters({ ...filters, checkIn: e.target.value })}
+        />
+        
+        <input
+          type="date"
+          value={filters.checkOut}
+          onChange={(e) => setFilters({ ...filters, checkOut: e.target.value })}
+        />
+        
+        <input
+          type="number"
+          min="1"
+          value={filters.guests}
+          onChange={(e) => setFilters({ ...filters, guests: parseInt(e.target.value) })}
+        />
+        
+        <button onClick={handleSearch} disabled={isSearching || !filters.destination}>
+          {isSearching ? 'Searching...' : 'Search'}
+        </button>
+      </div>
+    </div>
+  )
+}
+```
+
+### Configuring the Host Application
+
+Now set up the host application that will consume the remotes:
+
+```typescript
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import federation from '@originjs/vite-plugin-federation'
+
+export default defineConfig({
+  plugins: [
+    react(),
+    federation({
+      name: 'host',
+      remotes: {
+        remoteSearch: 'http://localhost:5001/assets/remoteEntry.js',
+        remoteBooking: 'http://localhost:5002/assets/remoteEntry.js',
+      },
+      shared: ['react', 'react-dom']
+    })
+  ],
+  build: {
+    modulePreload: false,
+    target: 'esnext',
+    minify: false,
+    cssCodeSplit: false
+  }
+})
+```
+
+Load the remote components in your host (`src/App.tsx`):
+
+```typescript
+import { lazy, Suspense } from 'react'
+
+const RemoteSearch = lazy(() => import('remoteSearch/Search'))
+const RemoteBooking = lazy(() => import('remoteBooking/Booking'))
+
+function App() {
+  return (
+    <div className="app-container">
+      <h1>Hotel Booking Platform</h1>
+      
+      <div className="features-grid">
+        <Suspense fallback={<div>Loading Search...</div>}>
+          <RemoteSearch />
+        </Suspense>
+        
+        <Suspense fallback={<div>Loading Booking...</div>}>
+          <RemoteBooking />
+        </Suspense>
+      </div>
+    </div>
+  )
+}
+
+export default App
+```
+
+## Benefits for Frontend Teams
+
+Implementing micro-frontends brings several key advantages:
+
+### 1. Team Autonomy
+
+Each team can work independently on their micro-frontend without waiting for other teams. The search team can deploy updates without coordinating with the booking team.
+
+<Mermaid chart={`
+sequenceDiagram
+    participant TeamA as Team A
+    participant CDN as CDN
+    participant Host as Host App
+    participant TeamB as Team B
+    
+    Note over TeamA: Develops Search v2.1.0
+    TeamA->>CDN: Deploy search/v2.1.0
+    Host->>CDN: Load search/v2.1.0
+    
+    Note over TeamB: Develops Booking v1.8.3
+    TeamB->>CDN: Deploy booking/v1.8.3
+    Host->>CDN: Load booking/v1.8.3
+    
+    Note over Host: Both MFEs work independently!
+`} />
+
+### 2. Independent Deployments
+
+Deploy updates to individual micro-frontends without rebuilding or redeploying the entire application. This means:
+- Faster deployment cycles
+- Reduced risk (smaller change sets)
+- Ability to rollback individual features
+- Continuous delivery for specific domains
+
+### 3. Technology Flexibility
+
+While maintaining consistency is important, micro-frontends allow you to:
+- Upgrade dependencies gradually (update React in one MFE at a time)
+- Experiment with new libraries in isolated contexts
+- Migrate from legacy code incrementally
+
+### 4. Clearer Ownership
+
+Each micro-frontend maps to a specific business domain:
+
+<Mermaid chart={`
+graph TB
+    subgraph TeamA["Search Team"]
+        A1["Search Filters"]
+        A2["Location Autocomplete"]
+        A3["Results Ranking"]
+        A4["Map Integration"]
+    end
+    
+    subgraph TeamB["Booking Team"]
+        B1["Date Selection"]
+        B2["Room Selection"]
+        B3["Confirmation"]
+    end
+    
+    subgraph TeamC["Payment Team"]
+        C1["Payment Methods"]
+        C2["Secure Checkout"]
+        C3["Invoicing"]
+    end
+    
+    style TeamA fill:#1e293b,stroke:#3b82f6,stroke-width:2px
+    style TeamB fill:#1e293b,stroke:#10b981,stroke-width:2px
+    style TeamC fill:#1e293b,stroke:#f59e0b,stroke-width:2px
+`} />
+
+This alignment between team structure and architecture (Conway's Law in action) leads to better code organization and accountability.
+
+### 5. Parallel Development
+
+Multiple teams can work simultaneously without merge conflicts or stepping on each other's toes. Your CI/CD pipeline becomes simpler as each MFE has its own build and deployment process.
+
+### 6. Improved Performance at Scale
+
+Counter-intuitively, micro-frontends can improve performance:
+- Load only what you need (lazy load MFEs per route)
+- Parallel loading of independent bundles
+- Better caching (update one MFE without invalidating others)
+- Code splitting happens naturally at MFE boundaries
+
+## Challenges and Best Practices
+
+Micro-frontends aren't without challenges. Here's how to address them:
+
+### Shared Dependencies
+
+**Challenge**: Multiple copies of React can bloat your bundle.
+
+**Solution**: Configure shared dependencies carefully:
+
+```typescript
+shared: {
+  react: { 
+    singleton: true,
+    requiredVersion: '^18.2.0'
+  },
+  'react-dom': { 
+    singleton: true,
+    requiredVersion: '^18.2.0'
+  }
+}
+```
+
+### Testing
+
+Test at multiple levels:
+- **Unit tests**: Within each micro-frontend
+- **Integration tests**: Test communication between MFEs
+- **E2E tests**: Test the composed application
+
+## When Should You Use Micro-Frontends?
+
+Micro-frontends aren't always the answer. We've already discussed this in depth at the beginning of this post, but here's a quick reminder of the decision criteria:
+
+**Consider micro-frontends when:**
+- Multiple autonomous teams need to work independently
+- Clear domain boundaries exist in your application  
+- Independent deployment cycles provide real business value
+- You're managing a large, long-lived application
+
+**Stick with a monolith when:**
+- Small team or early-stage product
+- Unclear domain boundaries or tightly coupled features
+- Limited DevOps maturity
+- Performance is the critical constraint
+
+The key is honest assessment: are you solving real organizational problems, or just adding complexity?
+
+## Conclusion
+
+Micro-frontends with Vite offer a powerful way to scale both your codebase and your team. The combination of Vite's speed and Module Federation's runtime code sharing creates a development experience that's both fast and flexible.
+
+By splitting your frontend into independently deployable pieces, you enable teams to move faster, deploy with confidence, and maintain clear ownership of their domains. The key is to carefully consider whether the added complexity is worth the benefits for your specific situation.
+
+Start small—perhaps extract a single feature as a micro-frontend and see how it feels. The beauty of this architecture is that you can adopt it incrementally, learning as you go.
+
+---
+
+**Resources:**
+- [Vite Module Federation Plugin](https://github.com/originjs/vite-plugin-federation)
+- [Module Federation Examples](https://github.com/module-federation/module-federation-examples)
+- [Micro-Frontends: Martin Fowler](https://martinfowler.com/articles/micro-frontends.html)
