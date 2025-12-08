@@ -1,5 +1,6 @@
 import React from "react";
 import { Metadata } from "next";
+import dynamic from "next/dynamic";
 import { blogs as allBlogs } from "#site/content";
 import { cn, formatDate } from "@/lib/utils";
 import "@/styles/mdx.css";
@@ -8,10 +9,14 @@ import "@/styles/toc.css";
 import Image from "next/image";
 import { siteConfig } from "@/config/site";
 import { Mdx } from "@/components/mdx-component";
-import { TableOfContents } from "@/components/toc";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
+
+const TableOfContents = dynamic(
+  () => import("@/components/toc").then((mod) => mod.TableOfContents),
+  { ssr: false }
+);
 
 interface BlogPageItemProps {
   params: {
