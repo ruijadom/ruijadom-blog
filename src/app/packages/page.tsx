@@ -42,7 +42,6 @@ async function getPackages(): Promise<NpmPackage[]> {
       links: {
         npm: obj.package.links.npm,
         homepage: obj.package.links.homepage,
-        repository: obj.package.links.repository,
       },
       date: obj.package.date,
       downloads: obj.package.downloads,

@@ -14,7 +14,7 @@ export default function Home() {
         <p className="max-w-2xl leading-normal text-muted-foreground sm:text-xl sm:leading-8">
           {siteConfig.description}
         </p>
-        <div className="space-x-4">
+        <div className="mt-4 flex flex-col space-y-6">
           <Link
             href="/blog"
             className={cn(
@@ -22,7 +22,17 @@ export default function Home() {
               "border",
             )}
           >
-            My Blog
+            Blog
+          </Link>
+
+          <Link
+            href="/packages"
+            className={cn(
+              buttonVariants({ size: "lg", variant: "secondary" }),
+              "border",
+            )}
+          >
+            Packages
           </Link>
         </div>
       </div>
