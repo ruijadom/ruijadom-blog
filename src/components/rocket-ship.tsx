@@ -376,8 +376,8 @@ export function RocketShip() {
         </button>
       </div>
       <div className="pointer-events-none fixed bottom-4 right-4 z-[100] hidden rounded-lg bg-black/50 p-3 text-sm text-white backdrop-blur-sm md:block">
-        <p>← → ou A D: Mover</p>
-        <p>Espaço: Disparar</p>
+        <p>← → or A D: Move</p>
+        <p>Space: Shoot</p>
       </div>
     </>
   );
