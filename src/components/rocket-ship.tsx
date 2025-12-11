@@ -8,13 +8,25 @@ interface Bullet {
   speed: number;
 }
 
+interface Asteroid {
+  x: number;
+  y: number;
+  radius: number;
+  speed: number;
+  rotation: number;
+  rotationSpeed: number;
+}
+
 export function RocketShip() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rocketRef = useRef({ x: 0, y: 0, width: 60, height: 80, speed: 8 });
   const bulletsRef = useRef<Bullet[]>([]);
+  const asteroidsRef = useRef<Asteroid[]>([]);
   const keysRef = useRef({ left: false, right: false, space: false });
   const animationRef = useRef<number>();
   const lastShotRef = useRef(0);
+  const lastAsteroidSpawnRef = useRef(0);
+
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -137,11 +149,83 @@ export function RocketShip() {
       ctx.shadowBlur = 0;
     };
 
+    // Draw asteroid
+    const drawAsteroid = (asteroid: Asteroid) => {
+      ctx.save();
+      ctx.translate(asteroid.x, asteroid.y);
+      ctx.rotate(asteroid.rotation);
+
+      // Draw irregular asteroid shape
+      ctx.fillStyle = '#78716c';
+      ctx.strokeStyle = '#57534e';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      
+      const points = 8;
+      for (let i = 0; i < points; i++) {
+        const angle = (i / points) * Math.PI * 2;
+        const variance = 0.7 + Math.sin(i * 2.5) * 0.3;
+        const radius = asteroid.radius * variance;
+        const x = Math.cos(angle) * radius;
+        const y = Math.sin(angle) * radius;
+        
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Add some detail
+      ctx.fillStyle = '#57534e';
+      ctx.beginPath();
+      ctx.arc(asteroid.radius * 0.3, -asteroid.radius * 0.2, asteroid.radius * 0.15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(-asteroid.radius * 0.2, asteroid.radius * 0.3, asteroid.radius * 0.1, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    };
+
+    // Check collision between bullet and asteroid
+    const checkCollision = (bullet: Bullet, asteroid: Asteroid): boolean => {
+      const dx = bullet.x - asteroid.x;
+      const dy = bullet.y - asteroid.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      return distance < asteroid.radius + 4;
+    };
+
+    // Spawn asteroids
+    const spawnAsteroid = () => {
+      const radius = 20 + Math.random() * 20;
+      const x = Math.random() * canvas.width;
+      const y = -radius;
+      const speed = 1 + Math.random() * 2;
+      const rotationSpeed = (Math.random() - 0.5) * 0.05;
+
+      asteroidsRef.current.push({
+        x,
+        y,
+        radius,
+        speed,
+        rotation: Math.random() * Math.PI * 2,
+        rotationSpeed,
+      });
+    };
+
+
+
     // Animation loop
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       const rocket = rocketRef.current;
+      const now = Date.now();
 
       // Move rocket
       if (keysRef.current.left && rocket.x > 0) {
@@ -152,7 +236,6 @@ export function RocketShip() {
       }
 
       // Shoot bullets
-      const now = Date.now();
       if (keysRef.current.space && now - lastShotRef.current > 200) {
         bulletsRef.current.push({
           x: rocket.x + rocket.width / 2,
@@ -162,9 +245,54 @@ export function RocketShip() {
         lastShotRef.current = now;
       }
 
-      // Update and draw bullets
+      // Spawn asteroids periodically
+      if (now - lastAsteroidSpawnRef.current > 2000) {
+        spawnAsteroid();
+        lastAsteroidSpawnRef.current = now;
+      }
+
+      // Update and draw asteroids
+      asteroidsRef.current = asteroidsRef.current.filter((asteroid) => {
+        asteroid.y += asteroid.speed;
+        asteroid.rotation += asteroid.rotationSpeed;
+        
+        if (asteroid.y < canvas.height + asteroid.radius) {
+          drawAsteroid(asteroid);
+          return true;
+        }
+        return false;
+      });
+
+      // Update and draw bullets with collision detection
       bulletsRef.current = bulletsRef.current.filter((bullet) => {
         bullet.y -= bullet.speed;
+        
+        // Check collision with asteroids
+        let bulletHit = false;
+        asteroidsRef.current = asteroidsRef.current.filter((asteroid) => {
+          if (checkCollision(bullet, asteroid)) {
+            bulletHit = true;
+            // Create explosion effect
+            for (let i = 0; i < 8; i++) {
+              const angle = (i / 8) * Math.PI * 2;
+              ctx.fillStyle = '#f59e0b';
+              ctx.beginPath();
+              ctx.arc(
+                asteroid.x + Math.cos(angle) * 10,
+                asteroid.y + Math.sin(angle) * 10,
+                3,
+                0,
+                Math.PI * 2
+              );
+              ctx.fill();
+            }
+            return false;
+          }
+          return true;
+        });
+        
+        if (bulletHit) return false;
+        
         if (bullet.y > 0) {
           drawBullet(bullet);
           return true;
