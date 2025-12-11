@@ -9,7 +9,7 @@ export default function Home() {
       <div className="container mt-6 flex max-w-5xl flex-col items-center gap-4 text-center xl:mt-0">
         <h1 className="text-4xl font-semibold capitalize sm:text-5xl md:text-6xl lg:text-7xl">
           Building <span className="text-yellow-300">UIs</span> that{" "}
-          <span className="text-primary">scales</span>
+          <span className="text-primary">scale</span>
         </h1>
         <p className="max-w-2xl leading-normal text-muted-foreground sm:text-xl sm:leading-8">
           {siteConfig.description}
