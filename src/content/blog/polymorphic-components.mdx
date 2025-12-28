@@ -1,0 +1,738 @@
+---
+title: "Polymorphic Components in React with TypeScript"
+description: "Master the art of polymorphic components in React—an advanced pattern that enables building highly flexible, type-safe component APIs that adapt to any HTML element or React component."
+date: "2025-12-28"
+author: "ruijadom"
+---
+
+Have you ever built a Button component only to realize you need it to sometimes render as a link? Or created a Text component that needs to be a `<p>`, `<span>`, `<h1>`, or any other element depending on context? Welcome to the world of polymorphic components. One of the most powerful advanced patterns in React.
+
+In this post, we'll explore how to build truly flexible components that can morph into different elements while maintaining full TypeScript type safety and excellent developer experience.
+
+## What Are Polymorphic Components?
+
+Polymorphic components (also called "as" components or polymorphic props) are React components that can render as different HTML elements or even other React components, determined by a prop—typically called `as`.
+
+### The Problem They Solve
+
+Consider this common scenario:
+
+```typescript
+// Without polymorphism - you need multiple components
+<Button>Click me</Button>
+<ButtonLink href="/dashboard">Go to Dashboard</ButtonLink>
+<IconButton icon={<Icon />}>Submit</IconButton>
+
+// With polymorphism - one flexible component
+<Button>Click me</Button>
+<Button as="a" href="/dashboard">Go to Dashboard</Button>
+<Button as={Link} to="/dashboard">Go to Dashboard</Button>
+```
+
+Instead of creating `Button`, `ButtonLink`, `ButtonAsDiv`, etc., you create one intelligent component that adapts to your needs while preserving type safety for the underlying element's props.
+
+## Why Use Polymorphic Components?
+
+<Callout type="success">
+
+**<h2>Reduced Component Sprawl</h2>**
+
+Instead of maintaining separate `Button`, `ButtonLink`, `ButtonDiv` components, you maintain one component with intelligent props. This means less code, easier maintenance, and a simpler API for consumers.
+
+**Type Safety**
+
+With proper TypeScript implementation, you get full autocomplete and type checking for the underlying element's props. When you use `as="a"`, TypeScript knows you can use `href`. When you use `as="button"`, it knows you can use `disabled`.
+
+**Consistent Styling**
+
+All variations share the same base styles and behavior. A button rendered as a link looks and feels like your button, but functions as a link.
+
+**Better Semantics**
+
+You can use the correct HTML element for the job while maintaining consistent appearance. Need a link that looks like a button? Use semantic HTML (`<a>`) with button styles, improving accessibility and SEO.
+
+**Composition Over Duplication**
+
+Follow DRY principles. Write your component logic once and let polymorphism handle the variations.
+
+</Callout>
+
+## Basic Implementation
+
+Let's start with a simple polymorphic Text component:
+
+```typescript
+import { ComponentPropsWithoutRef, ElementType, ReactNode } from 'react'
+
+interface TextOwnProps {
+  children: ReactNode
+  color?: 'default' | 'primary' | 'secondary'
+  size?: 'sm' | 'md' | 'lg'
+}
+
+type TextProps<T extends ElementType> = TextOwnProps & {
+  as?: T
+} & ComponentPropsWithoutRef<T>
+
+function Text<T extends ElementType = 'p'>({
+  as,
+  children,
+  color = 'default',
+  size = 'md',
+  ...props
+}: TextProps<T>) {
+  const Component = as || 'p'
+  
+  const className = `text text--${color} text--${size}`
+  
+  return (
+    <Component className={className} {...props}>
+      {children}
+    </Component>
+  )
+}
+
+// Usage with full type safety
+function Example() {
+  return (
+    <>
+      {/* Renders as <p> */}
+      <Text>Default paragraph</Text>
+      
+      {/* Renders as <h1> - TypeScript knows about h1 props */}
+      <Text as="h1" id="title">Main Heading</Text>
+      
+      {/* Renders as <span> */}
+      <Text as="span" color="primary">Inline text</Text>
+      
+      {/* Renders as <a> - TypeScript requires href! */}
+      <Text as="a" href="/about" target="_blank">
+        Link text
+      </Text>
+    </>
+  )
+}
+```
+
+### How It Works
+
+The key is `ComponentPropsWithoutRef<T>`, which extracts all valid props for the element type `T`. When you specify `as="a"`, TypeScript automatically knows that `href`, `target`, and other anchor props are available.
+
+## Advanced Implementation: The Button Component
+
+Let's build a production-ready polymorphic Button component with proper TypeScript support:
+
+```typescript
+import { 
+  ComponentPropsWithoutRef, 
+  ElementType, 
+  ReactNode,
+  forwardRef,
+  Ref
+} from 'react'
+
+// Our component's own props
+interface ButtonOwnProps {
+  children: ReactNode
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost'
+  size?: 'sm' | 'md' | 'lg'
+  isLoading?: boolean
+  leftIcon?: ReactNode
+  rightIcon?: ReactNode
+}
+
+// Combine our props with the polymorphic element's props
+type ButtonProps<T extends ElementType> = ButtonOwnProps & 
+  Omit<ComponentPropsWithoutRef<T>, keyof ButtonOwnProps> & {
+    as?: T
+  }
+
+// Helper type for the ref
+type ButtonComponent = <T extends ElementType = 'button'>(
+  props: ButtonProps<T> & { ref?: Ref<any> }
+) => ReactNode
+
+const Button: ButtonComponent = forwardRef(
+  <T extends ElementType = 'button'>(
+    {
+      as,
+      children,
+      variant = 'primary',
+      size = 'md',
+      isLoading = false,
+      leftIcon,
+      rightIcon,
+      className = '',
+      ...props
+    }: ButtonProps<T>,
+    ref: Ref<any>
+  ) => {
+    const Component = as || 'button'
+    
+    const classes = [
+      'btn',
+      `btn--${variant}`,
+      `btn--${size}`,
+      isLoading && 'btn--loading',
+      className
+    ].filter(Boolean).join(' ')
+    
+    return (
+      <Component
+        ref={ref}
+        className={classes}
+        disabled={isLoading}
+        {...props}
+      >
+        {leftIcon && <span className="btn__icon-left">{leftIcon}</span>}
+        {isLoading ? <span>Loading...</span> : children}
+        {rightIcon && <span className="btn__icon-right">{rightIcon}</span>}
+      </Component>
+    )
+  }
+)
+
+Button.displayName = 'Button'
+
+export default Button
+```
+
+### Usage Examples
+
+```typescript
+import { Link } from 'react-router-dom'
+import { ArrowRight, Download } from './icons'
+
+function ButtonExamples() {
+  return (
+    <div>
+      {/* Regular button */}
+      <Button onClick={() => console.log('clicked')}>
+        Click Me
+      </Button>
+      
+      {/* Button as a link */}
+      <Button as="a" href="/download" download>
+        Download
+      </Button>
+      
+      {/* Button with React Router Link */}
+      <Button as={Link} to="/dashboard" variant="outline">
+        Go to Dashboard
+      </Button>
+      
+      {/* Button with icons */}
+      <Button 
+        variant="primary" 
+        rightIcon={<ArrowRight />}
+        onClick={handleSubmit}
+      >
+        Continue
+      </Button>
+      
+      {/* Loading state */}
+      <Button isLoading variant="secondary">
+        Submitting...
+      </Button>
+      
+      {/* Disabled button (TypeScript knows this prop exists) */}
+      <Button disabled>
+        Cannot Click
+      </Button>
+      
+      {/* As a div (for custom click handling) */}
+      <Button as="div" role="button" tabIndex={0}>
+        Custom Clickable
+      </Button>
+    </div>
+  )
+}
+```
+
+## Interactive Example
+
+See polymorphic components in action with this interactive example:
+
+<CodeSandbox 
+  sandboxId="9ly4c7"
+  title="Polymorphic Components Demo"
+  height={600}
+  theme="dark"
+  options={{
+    fontsize: 12,
+    hidenavigation: false,
+    expanddevtools: true
+  }}
+/>
+
+## Real-World Example: Building a Design System
+
+Polymorphic components shine in design systems. Let's build a Box component—the foundation of many design systems:
+
+```typescript
+import { ComponentPropsWithoutRef, ElementType, CSSProperties } from 'react'
+
+interface BoxOwnProps {
+  children?: React.ReactNode
+  // Spacing
+  p?: number | string  // padding
+  px?: number | string // padding horizontal
+  py?: number | string // padding vertical
+  m?: number | string  // margin
+  mx?: number | string // margin horizontal
+  my?: number | string // margin vertical
+  // Layout
+  display?: CSSProperties['display']
+  width?: CSSProperties['width']
+  height?: CSSProperties['height']
+  // Colors
+  bg?: string // background
+  color?: string
+}
+
+type BoxProps<T extends ElementType> = BoxOwnProps & {
+  as?: T
+} & Omit<ComponentPropsWithoutRef<T>, keyof BoxOwnProps>
+
+function Box<T extends ElementType = 'div'>({
+  as,
+  children,
+  p,
+  px,
+  py,
+  m,
+  mx,
+  my,
+  display,
+  width,
+  height,
+  bg,
+  color,
+  style,
+  ...props
+}: BoxProps<T>) {
+  const Component = as || 'div'
+  
+  const boxStyle: CSSProperties = {
+    padding: p,
+    paddingLeft: px,
+    paddingRight: px,
+    paddingTop: py,
+    paddingBottom: py,
+    margin: m,
+    marginLeft: mx,
+    marginRight: mx,
+    marginTop: my,
+    marginBottom: my,
+    display,
+    width,
+    height,
+    backgroundColor: bg,
+    color,
+    ...style
+  }
+  
+  return (
+    <Component style={boxStyle} {...props}>
+      {children}
+    </Component>
+  )
+}
+
+// Build other components on top of Box
+function Card<T extends ElementType = 'div'>(props: BoxProps<T>) {
+  return (
+    <Box
+      bg="white"
+      p="1rem"
+      style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
+      {...props}
+    />
+  )
+}
+
+function Container<T extends ElementType = 'div'>(props: BoxProps<T>) {
+  return (
+    <Box
+      mx="auto"
+      px="1rem"
+      width="100%"
+      style={{ maxWidth: '1200px' }}
+      {...props}
+    />
+  )
+}
+
+// Usage
+function Layout() {
+  return (
+    <Container as="main">
+      <Box as="header" py="2rem" bg="#f0f0f0">
+        <Box as="h1" m={0}>Welcome</Box>
+      </Box>
+      
+      <Card as="article">
+        <Box as="h2">Article Title</Box>
+        <Box as="p" color="#666">
+          Article content here...
+        </Box>
+      </Card>
+    </Container>
+  )
+}
+```
+
+## Handling Refs with Polymorphic Components
+
+Refs require special handling in polymorphic components:
+
+```typescript
+import { forwardRef, ElementType, ComponentPropsWithoutRef, Ref } from 'react'
+
+interface InputOwnProps {
+  label?: string
+  error?: string
+}
+
+type InputProps<T extends ElementType> = InputOwnProps & {
+  as?: T
+} & ComponentPropsWithoutRef<T>
+
+type InputComponent = <T extends ElementType = 'input'>(
+  props: InputProps<T> & { ref?: Ref<any> }
+) => React.ReactElement | null
+
+const Input: InputComponent = forwardRef(
+  <T extends ElementType = 'input'>(
+    { as, label, error, ...props }: InputProps<T>,
+    ref: Ref<any>
+  ) => {
+    const Component = as || 'input'
+    
+    return (
+      <div className="input-wrapper">
+        {label && <label>{label}</label>}
+        <Component ref={ref} {...props} />
+        {error && <span className="error">{error}</span>}
+      </div>
+    )
+  }
+)
+
+Input.displayName = 'Input'
+
+// Usage with ref
+function Form() {
+  const inputRef = useRef<HTMLInputElement>(null)
+  
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+  
+  return (
+    <Input 
+      ref={inputRef}
+      label="Email"
+      type="email"
+      placeholder="you@example.com"
+    />
+  )
+}
+```
+
+## Common Patterns and Best Practices
+
+### 1. Set Sensible Defaults
+
+Always provide a default element type:
+
+```typescript
+// ✅ Good - has default
+function Text<T extends ElementType = 'p'>({ as, ...props }: TextProps<T>) {
+  const Component = as || 'p'
+  // ...
+}
+
+// ❌ Bad - no default, requires 'as' every time
+function Text<T extends ElementType>({ as, ...props }: TextProps<T>) {
+  const Component = as // what if undefined?
+  // ...
+}
+```
+
+### 2. Avoid Prop Conflicts
+
+Use `Omit` to prevent prop name collisions:
+
+```typescript
+type ButtonProps<T extends ElementType> = ButtonOwnProps & 
+  Omit<ComponentPropsWithoutRef<T>, keyof ButtonOwnProps> & {
+    as?: T
+  }
+```
+
+This ensures your custom props (like `variant`) don't conflict with native element props.
+
+### 3. Provide Type Utilities
+
+Make it easier for consumers to extend your components:
+
+```typescript
+import { ComponentPropsWithoutRef, ElementType } from 'react'
+
+// Export utility type for users who want to extend your component
+export type PolymorphicComponentProps<
+  T extends ElementType,
+  Props = {}
+> = Props & 
+  Omit<ComponentPropsWithoutRef<T>, keyof Props> & {
+    as?: T
+  }
+
+// Now users can easily create their own polymorphic components
+interface MyButtonProps {
+  isAwesome?: boolean
+}
+
+type MyButtonComponentProps<T extends ElementType> = 
+  PolymorphicComponentProps<T, MyButtonProps>
+```
+
+### 4. Document Supported Elements
+
+Not all elements make sense for all components:
+
+```typescript
+/**
+ * Button component that can render as different elements.
+ * 
+ * @example
+ * ```tsx
+ * <Button>Regular button</Button>
+ * <Button as="a" href="/link">Button link</Button>
+ * <Button as={Link} to="/route">Router link</Button>
+ * ```
+ * 
+ * Supported elements:
+ * - button (default)
+ * - a
+ * - div (with proper ARIA attributes)
+ * - Any React component that accepts onClick
+ */
+```
+
+## When to Use Polymorphic Components
+
+<Callout type="success">
+
+**Use polymorphic components when:**
+
+**Building design system primitives**
+
+Components like `Box`, `Text`, `Button`, `Flex`, `Stack` that form the foundation of your UI need maximum flexibility.
+
+**You need semantic HTML flexibility**
+
+When the same visual component needs different HTML semantics (button vs link, div vs section, span vs p).
+
+**Creating wrapper/layout components**
+
+Components that primarily handle styling or layout but shouldn't dictate the underlying HTML structure.
+
+**Building library components**
+
+When creating reusable components for multiple projects or teams where you can't predict all use cases.
+
+</Callout>
+
+<Callout type="error">
+
+**Avoid polymorphic components when:**
+
+**The component has complex behavior**
+
+If your component has intricate internal logic tied to specific element types, polymorphism can make it brittle. A `Form` component should probably stay a `<form>`.
+
+**You need strict type safety**
+
+While polymorphic components are type-safe, complex polymorphic types can become hard to debug. If you need ironclad guarantees about props, simpler types might be better.
+
+**The API becomes confusing**
+
+If users frequently misuse the `as` prop or choose inappropriate elements, it might be better to create separate components with clear purposes.
+
+**Performance is critical**
+
+The type gymnastics add slight overhead at build time, and runtime element selection can be marginally slower. For 99% of cases this doesn't matter, but for highly optimized code, direct elements might be preferable.
+
+</Callout>
+
+## Common Pitfalls and Solutions
+
+### Pitfall 1: TypeScript Errors with Complex Props
+
+**Problem**: TypeScript struggles with complex polymorphic types.
+
+**Solution**: Simplify your type definitions and use helper types:
+
+```typescript
+// Instead of inline types, extract them
+type PolymorphicProps<T extends ElementType, OwnProps> = 
+  OwnProps & 
+  Omit<ComponentPropsWithoutRef<T>, keyof OwnProps> & 
+  { as?: T }
+
+// Then use the helper
+interface ButtonOwnProps {
+  variant?: 'primary' | 'secondary'
+}
+
+type ButtonProps<T extends ElementType> = PolymorphicProps<T, ButtonOwnProps>
+```
+
+### Pitfall 2: Losing Ref Types
+
+**Problem**: `ref` type becomes `any`.
+
+**Solution**: Use proper ref typing with `ElementRef`:
+
+```typescript
+import { ElementRef, ElementType, forwardRef } from 'react'
+
+type ButtonComponent = <T extends ElementType = 'button'>(
+  props: ButtonProps<T> & { 
+    ref?: Ref<ElementRef<T>>  // ✅ Properly typed ref
+  }
+) => ReactNode
+```
+
+### Pitfall 3: Default Props Not Working
+
+**Problem**: Default values for `as` don't infer correctly.
+
+**Solution**: Always fallback in the component body:
+
+```typescript
+function Button<T extends ElementType = 'button'>({
+  as,
+  ...props
+}: ButtonProps<T>) {
+  const Component = as || 'button'  // ✅ Explicit fallback
+  return <Component {...props} />
+}
+```
+
+## Advanced: Conditional Props Based on Element
+
+Sometimes you want different props based on the `as` value:
+
+```typescript
+import { ComponentPropsWithoutRef, ElementType } from 'react'
+
+interface BaseProps {
+  children: React.ReactNode
+  variant?: 'primary' | 'secondary'
+}
+
+// Additional props only when rendered as a link
+interface LinkProps {
+  external?: boolean
+  newTab?: boolean
+}
+
+type ButtonProps<T extends ElementType> = BaseProps & {
+  as?: T
+} & ComponentPropsWithoutRef<T> &
+  (T extends 'a' ? LinkProps : {})  // Conditional props!
+
+function Button<T extends ElementType = 'button'>({
+  as,
+  variant = 'primary',
+  children,
+  external,
+  newTab,
+  ...props
+}: ButtonProps<T>) {
+  const Component = as || 'button'
+  
+  // When rendered as 'a', apply link-specific logic
+  if (Component === 'a' && external) {
+    return (
+      <Component
+        rel="noopener noreferrer"
+        target={newTab ? '_blank' : undefined}
+        {...props}
+      >
+        {children} ↗
+      </Component>
+    )
+  }
+  
+  return <Component {...props}>{children}</Component>
+}
+
+// Usage
+<Button as="a" href="/docs" external newTab>
+  Documentation
+</Button>
+```
+
+## Testing Polymorphic Components
+
+Testing polymorphic components is straightforward—test each variant:
+
+```typescript
+import { render, screen } from '@testing-library/react'
+import Button from './Button'
+
+describe('Button', () => {
+  it('renders as button by default', () => {
+    render(<Button>Click</Button>)
+    const button = screen.getByRole('button')
+    expect(button.tagName).toBe('BUTTON')
+  })
+  
+  it('renders as link when as="a"', () => {
+    render(<Button as="a" href="/test">Link</Button>)
+    const link = screen.getByRole('link')
+    expect(link.tagName).toBe('A')
+    expect(link).toHaveAttribute('href', '/test')
+  })
+  
+  it('renders with custom component', () => {
+    const CustomLink = ({ children, ...props }: any) => (
+      <a {...props}>{children}</a>
+    )
+    
+    render(<Button as={CustomLink} to="/custom">Custom</Button>)
+    expect(screen.getByText('Custom')).toBeInTheDocument()
+  })
+  
+  it('applies variant styles correctly', () => {
+    render(<Button variant="secondary">Secondary</Button>)
+    expect(screen.getByRole('button')).toHaveClass('btn--secondary')
+  })
+})
+```
+
+## Conclusion
+
+Polymorphic components are a powerful pattern for building flexible, reusable React components with excellent TypeScript support. They're essential for design systems and component libraries, enabling you to write less code while providing more functionality.
+
+The key takeaways:
+
+- **Use `as` prop** to allow element type customization
+- **Leverage TypeScript** for full type safety with `ComponentPropsWithoutRef`
+- **Set sensible defaults** so the component works out of the box
+- **Handle refs properly** with `forwardRef` and correct typing
+- **Document expected usage** to prevent misuse
+- **Don't overuse** — simple components don't need polymorphism
+
+Start with simple polymorphic components like `Text` and `Box`, then gradually adopt the pattern for more complex components as you see the benefits. Your component consumers will thank you for the flexibility, and TypeScript will keep everything safe.
+
+---
+
+**Resources:**
+- [React TypeScript Cheatsheet - Polymorphic Components](https://react-typescript-cheatsheet.netlify.app/docs/advanced/patterns_by_usecase/#polymorphic-components)
+- [Building a Polymorphic Component in React](https://blog.logrocket.com/build-strongly-typed-polymorphic-components-react-typescript/)
+- [Chakra UI - Polymorphic Components](https://chakra-ui.com/docs/components/polymorphic)
