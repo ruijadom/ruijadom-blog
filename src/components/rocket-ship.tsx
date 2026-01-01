@@ -96,11 +96,11 @@ export function RocketShip() {
       type: structure.type,
     });
     
-    // Add notification with the quote
-    const structureName = structure.type === 'satellite' ? 'Satellite' : 'Space Station';
+    // Add notification with the quote - show for 5 seconds at the top
+    const structureName = structure.type === 'satellite' ? '🛰️ Satellite' : '🏗️ Space Station';
     notificationsRef.current.push({
       id: `deploy-${Date.now()}`,
-      message: `${structureName} Deployed: "${structure.quote}"`,
+      message: `${structureName} Deployed!\n"${structure.quote}"`,
       timestamp: Date.now(),
       duration: 5000, // Show for 5 seconds
       type: 'deploy',
@@ -314,7 +314,7 @@ export function RocketShip() {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
-    // Click handler for structures and welcome screen
+    // Click handler for welcome screen
     const handleCanvasClick = (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
       const clickX = e.clientX - rect.left;
@@ -358,25 +358,6 @@ export function RocketShip() {
         showHelpRef.current = !showHelpRef.current;
         return;
       }
-
-      // Check if click is on any structure
-      structuresRef.current.forEach((structure) => {
-        const size = structure.type === 'satellite' ? 40 : 60; // Approximate clickable area
-        const dx = clickX - structure.x;
-        const dy = clickY - structure.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance < size) {
-          // Show quote notification
-          notificationsRef.current.push({
-            id: `quote-${Date.now()}`,
-            message: `"${structure.quote}"`,
-            timestamp: Date.now(),
-            duration: 4000,
-            type: 'info',
-          });
-        }
-      });
     };
 
     canvas.addEventListener('click', handleCanvasClick);
@@ -636,11 +617,43 @@ export function RocketShip() {
         ctx.fillStyle = bgColor;
         const padding = 20;
         const maxWidth = canvas.width * 0.6;
-        ctx.font = '16px Arial';
-        const textMetrics = ctx.measureText(notification.message);
-        const textWidth = Math.min(textMetrics.width, maxWidth);
-        const boxWidth = textWidth + padding * 2;
-        const boxHeight = 60;
+        const lineHeight = 20;
+        
+        // Split message by newlines first, then handle word wrap for each line
+        const paragraphs = notification.message.split('\n');
+        const allLines: string[] = [];
+        
+        ctx.font = 'bold 14px Arial';
+        const maxLineWidth = maxWidth - padding * 2;
+        
+        // Process each paragraph for word wrapping
+        paragraphs.forEach((paragraph) => {
+          const words = paragraph.split(' ');
+          let line = '';
+          
+          for (let i = 0; i < words.length; i++) {
+            const testLine = line + words[i] + ' ';
+            const metrics = ctx.measureText(testLine);
+            if (metrics.width > maxLineWidth && i > 0) {
+              allLines.push(line.trim());
+              line = words[i] + ' ';
+            } else {
+              line = testLine;
+            }
+          }
+          if (line.trim()) {
+            allLines.push(line.trim());
+          }
+        });
+        
+        // Calculate box dimensions based on actual content
+        const boxHeight = Math.max(60, allLines.length * lineHeight + padding * 2);
+        let maxTextWidth = 0;
+        allLines.forEach((line) => {
+          const metrics = ctx.measureText(line);
+          maxTextWidth = Math.max(maxTextWidth, metrics.width);
+        });
+        const boxWidth = Math.min(maxTextWidth + padding * 2, maxWidth);
 
         // Add shadow for depth
         ctx.shadowBlur = 10;
@@ -662,24 +675,12 @@ export function RocketShip() {
         ctx.textBaseline = 'middle';
         ctx.font = 'bold 14px Arial';
         
-        // Word wrap for long quotes
-        const words = notification.message.split(' ');
-        let line = '';
-        let lineY = yOffset + 30;
-        const maxLineWidth = maxWidth - padding;
-
-        for (let i = 0; i < words.length; i++) {
-          const testLine = line + words[i] + ' ';
-          const metrics = ctx.measureText(testLine);
-          if (metrics.width > maxLineWidth && i > 0) {
-            ctx.fillText(line, centerX, lineY);
-            line = words[i] + ' ';
-            lineY += 18;
-          } else {
-            line = testLine;
-          }
-        }
-        ctx.fillText(line, centerX, lineY);
+        // Draw all lines
+        let lineY = yOffset + padding + lineHeight / 2;
+        allLines.forEach((line) => {
+          ctx.fillText(line, centerX, lineY);
+          lineY += lineHeight;
+        });
 
         ctx.restore();
 
@@ -1765,7 +1766,8 @@ export function RocketShip() {
       });
 
       // Check for deploy threshold (every 20 resources)
-      if (resources.collected >= resources.nextDeployAt && now - lastResourceCheckRef.current > 500) {
+      // Use exact equality to prevent multiple deploys
+      if (resources.collected === resources.nextDeployAt && now - lastResourceCheckRef.current > 500) {
         deployStructure(canvas.width, canvas.height);
         lastResourceCheckRef.current = now;
       }
