@@ -337,7 +337,6 @@ export function RocketShip() {
           clickY <= buttonY + buttonHeight
         ) {
           hasStartedRef.current = true;
-          return;
         }
         return;
       }
@@ -356,7 +355,6 @@ export function RocketShip() {
 
       if (distanceToHelpButton <= helpButtonSize / 2) {
         showHelpRef.current = !showHelpRef.current;
-        return;
       }
     };
 
@@ -760,37 +758,37 @@ export function RocketShip() {
       const centerX = canvas.width / 2;
       const centerY = canvas.height / 2;
 
-      // Background overlay
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+      // Background overlay - darker for better contrast
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Game title
-      ctx.fillStyle = '#3b82f6';
+      // Game title - using app's primary purple color
+      ctx.fillStyle = '#a855f7'; // Purple-500
       ctx.font = 'bold 56px Arial';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('SPACE DEV', centerX, centerY - 220);
 
-      // Subtitle
-      ctx.fillStyle = '#10b981';
-      ctx.font = 'bold 32px Arial';
+      // Subtitle - using app's green accent
+      ctx.fillStyle = '#10b981'; // Green-500
+      ctx.font = 'bold 28px Arial';
       ctx.fillText('Build Infrastructure, Not Just Bugs', centerX, centerY - 170);
 
-      // Metaphor explanation box
+      // Metaphor explanation box - using purple theme
       const boxWidth = Math.min(700, canvas.width - 40);
       const boxHeight = 180;
       const boxX = centerX - boxWidth / 2;
       const boxY = centerY - 120;
 
-      ctx.fillStyle = 'rgba(59, 130, 246, 0.1)';
+      ctx.fillStyle = 'rgba(168, 85, 247, 0.1)'; // Purple with transparency
       ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
-      ctx.strokeStyle = '#3b82f6';
+      ctx.strokeStyle = '#a855f7'; // Purple border
       ctx.lineWidth = 2;
       ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
 
-      // Metaphor text
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '18px Arial';
+      // Metaphor text - lighter gray for better readability
+      ctx.fillStyle = '#e5e7eb'; // Gray-200
+      ctx.font = '17px Arial';
       ctx.textAlign = 'center';
       
       const metaphorLines = [
@@ -809,15 +807,15 @@ export function RocketShip() {
         lineY += 24;
       });
 
-      // Controls section
+      // Controls section - using yellow accent
       const controlsY = centerY + 80;
-      ctx.fillStyle = '#fbbf24';
-      ctx.font = 'bold 24px Arial';
+      ctx.fillStyle = '#fbbf24'; // Yellow-400
+      ctx.font = 'bold 22px Arial';
       ctx.fillText('CONTROLS', centerX, controlsY);
 
-      // Desktop controls
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '18px Arial';
+      // Desktop controls - lighter text
+      ctx.fillStyle = '#d1d5db'; // Gray-300
+      ctx.font = '17px Arial';
       ctx.fillText('← → or A D: Move', centerX - 150, controlsY + 40);
       ctx.fillText('Space: Shoot', centerX - 150, controlsY + 70);
       ctx.fillText('ESC: Pause', centerX + 150, controlsY + 40);
@@ -825,12 +823,12 @@ export function RocketShip() {
 
       // Mobile note
       if (canvas.width < 768) {
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = '16px Arial';
+        ctx.fillStyle = '#9ca3af'; // Gray-400
+        ctx.font = '15px Arial';
         ctx.fillText('Touch controls available at bottom', centerX, controlsY + 100);
       }
 
-      // Start button
+      // Start button - using app's primary purple
       const buttonWidth = 300;
       const buttonHeight = 60;
       const buttonX = centerX - buttonWidth / 2;
@@ -838,24 +836,24 @@ export function RocketShip() {
 
       // Button background with glow
       ctx.shadowBlur = 20;
-      ctx.shadowColor = '#10b981';
-      ctx.fillStyle = '#10b981';
+      ctx.shadowColor = '#a855f7'; // Purple glow
+      ctx.fillStyle = '#a855f7'; // Purple-500
       ctx.fillRect(buttonX, buttonY, buttonWidth, buttonHeight);
       ctx.shadowBlur = 0;
 
-      // Button border
-      ctx.strokeStyle = '#059669';
+      // Button border - darker purple
+      ctx.strokeStyle = '#9333ea'; // Purple-600
       ctx.lineWidth = 3;
       ctx.strokeRect(buttonX, buttonY, buttonWidth, buttonHeight);
 
       // Button text
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 28px Arial';
+      ctx.font = 'bold 26px Arial';
       ctx.fillText('START GAME', centerX, buttonY + buttonHeight / 2);
 
       // Instruction below button
-      ctx.fillStyle = '#94a3b8';
-      ctx.font = '16px Arial';
+      ctx.fillStyle = '#9ca3af'; // Gray-400
+      ctx.font = '15px Arial';
       ctx.fillText('Click button or press SPACE to start', centerX, buttonY + buttonHeight + 30);
     };
 
@@ -865,30 +863,30 @@ export function RocketShip() {
       const centerY = canvas.height / 2;
 
       // Semi-transparent overlay
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Help title
-      ctx.fillStyle = '#fbbf24';
+      // Help title - using yellow accent
+      ctx.fillStyle = '#fbbf24'; // Yellow-400
       ctx.font = 'bold 48px Arial';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('HELP', centerX, centerY - 220);
 
-      // Metaphor explanation box
+      // Metaphor explanation box - using purple theme
       const boxWidth = Math.min(700, canvas.width - 40);
       const boxHeight = 180;
       const boxX = centerX - boxWidth / 2;
       const boxY = centerY - 170;
 
-      ctx.fillStyle = 'rgba(59, 130, 246, 0.1)';
+      ctx.fillStyle = 'rgba(168, 85, 247, 0.1)'; // Purple with transparency
       ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
-      ctx.strokeStyle = '#3b82f6';
+      ctx.strokeStyle = '#a855f7'; // Purple border
       ctx.lineWidth = 2;
       ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
 
-      // Metaphor text
-      ctx.fillStyle = '#ffffff';
+      // Metaphor text - lighter gray
+      ctx.fillStyle = '#e5e7eb'; // Gray-200
       ctx.font = '16px Arial';
       ctx.textAlign = 'center';
       
@@ -899,7 +897,7 @@ export function RocketShip() {
         '🏗️ Space Stations = Infrastructure that prevents bugs',
         '',
         'Collect 20 asteroids to deploy a defensive structure.',
-        'Click on structures to see their educational quotes!',
+        'Quotes appear automatically when structures deploy!',
       ];
 
       let lineY = boxY + 20;
@@ -910,13 +908,13 @@ export function RocketShip() {
 
       // Controls section
       const controlsY = centerY + 30;
-      ctx.fillStyle = '#fbbf24';
-      ctx.font = 'bold 24px Arial';
+      ctx.fillStyle = '#fbbf24'; // Yellow-400
+      ctx.font = 'bold 22px Arial';
       ctx.fillText('CONTROLS', centerX, controlsY);
 
-      // Desktop controls
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '18px Arial';
+      // Desktop controls - lighter text
+      ctx.fillStyle = '#d1d5db'; // Gray-300
+      ctx.font = '17px Arial';
       ctx.fillText('← → or A D: Move', centerX - 150, controlsY + 40);
       ctx.fillText('Space: Shoot', centerX - 150, controlsY + 70);
       ctx.fillText('ESC: Pause', centerX + 150, controlsY + 40);
@@ -925,14 +923,14 @@ export function RocketShip() {
 
       // Mobile note
       if (canvas.width < 768) {
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = '16px Arial';
+        ctx.fillStyle = '#9ca3af'; // Gray-400
+        ctx.font = '15px Arial';
         ctx.fillText('Touch controls available at bottom', centerX, controlsY + 130);
       }
 
-      // Close instruction
-      ctx.fillStyle = '#10b981';
-      ctx.font = 'bold 24px Arial';
+      // Close instruction - using purple
+      ctx.fillStyle = '#a855f7'; // Purple-500
+      ctx.font = 'bold 22px Arial';
       ctx.fillText('Press ? or ESC to close', centerX, centerY + 200);
     };
 
@@ -1852,29 +1850,62 @@ export function RocketShip() {
     };
   }, [resources.collected, resources.nextDeployAt, resources.totalCollected, collectResource, deployStructure, level.current, level.asteroidSpawnRate, level.bugSpawnRate, level.bugSpeed, checkLevelUp, resetGame, isGameVisible]);
 
+  // Listen for play button click from the page
+  useEffect(() => {
+    const handlePlayClick = () => {
+      setIsGameVisible(true);
+      
+      // Close sidebar if open
+      const sidebarTrigger = document.querySelector('[data-sidebar="sidebar"]');
+      if (sidebarTrigger) {
+        const closeButton = document.querySelector('[data-sidebar-close]');
+        if (closeButton instanceof HTMLElement) {
+          closeButton.click();
+        }
+      }
+    };
+
+    const playButton = document.getElementById('play-game-button');
+    if (playButton) {
+      playButton.addEventListener('click', handlePlayClick);
+    }
+
+    return () => {
+      if (playButton) {
+        playButton.removeEventListener('click', handlePlayClick);
+      }
+    };
+  }, []);
+
+  // ESC key to exit game
+  useEffect(() => {
+    const handleEscKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isGameVisible && !hasStartedRef.current) {
+        e.preventDefault();
+        setIsGameVisible(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleEscKey);
+    return () => window.removeEventListener('keydown', handleEscKey);
+  }, [isGameVisible]);
+
   return (
     <>
-      {/* Game toggle button - always visible, position changes on mobile */}
-      <button
-        onClick={() => {
-          const newVisibility = !isGameVisible;
-          setIsGameVisible(newVisibility);
-          
-          // Reset game when hiding
-          if (!newVisibility) {
+      {/* Exit game button - only show when game is visible */}
+      {isGameVisible && (
+        <button
+          onClick={() => {
+            setIsGameVisible(false);
             hasStartedRef.current = false;
-          }
-        }}
-        className="fixed right-4 top-4 z-[200] flex size-14 items-center justify-center rounded-full border-2 bg-primary/30 text-2xl backdrop-blur-sm transition-all hover:scale-110 hover:bg-primary/50 active:scale-95 md:bottom-4 md:top-auto"
-        style={{
-          borderColor: isGameVisible ? '#10b981' : '#3b82f6',
-          backgroundColor: isGameVisible ? 'rgba(16, 185, 129, 0.3)' : 'rgba(59, 130, 246, 0.3)',
-        }}
-        aria-label={isGameVisible ? 'Hide game and show site' : 'Show game and hide site'}
-        title={isGameVisible ? 'Voltar ao site' : 'Jogar Space Dev'}
-      >
-        {isGameVisible ? '✕' : '🎮'}
-      </button>
+          }}
+          className="fixed right-4 top-4 z-[200] flex size-14 items-center justify-center rounded-full border-2 border-red-500 bg-red-500/30 text-2xl backdrop-blur-sm transition-all hover:scale-110 hover:bg-red-500/50 active:scale-95"
+          aria-label="Exit game and return to site"
+          title="Sair do jogo (ESC)"
+        >
+          ✕
+        </button>
+      )}
 
       {/* Particles background - only show when game is active */}
       {isGameVisible && (

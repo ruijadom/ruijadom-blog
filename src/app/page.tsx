@@ -1,5 +1,8 @@
 import { siteConfig } from "@/config/site";
 import { RocketShip } from "@/components/rocket-ship";
+import Link from "next/link";
+import { cn } from "@/lib/utils";
+import { buttonVariants } from "@/components/ui/button";
 
 export default function Home() {
   return (
@@ -14,12 +17,12 @@ export default function Home() {
           <p className="max-w-2xl leading-normal text-muted-foreground sm:text-xl sm:leading-8">
             {siteConfig.description}
           </p>
-          {/* <div className="mt-4 flex flex-col space-y-6">
+          <div className="mt-8 flex flex-col space-y-4 w-full max-w-xs">
             <Link
               href="/blog"
               className={cn(
                 buttonVariants({ size: "lg", variant: "secondary" }),
-                "border",
+                "border w-full text-lg"
               )}
             >
               Blog
@@ -29,12 +32,22 @@ export default function Home() {
               href="/packages"
               className={cn(
                 buttonVariants({ size: "lg", variant: "secondary" }),
-                "border",
+                "border w-full text-lg"
               )}
             >
               Packages
             </Link>
-          </div> */}
+
+            <button
+              id="play-game-button"
+              className={cn(
+                buttonVariants({ size: "lg", variant: "default" }),
+                "border w-full text-lg bg-primary hover:bg-primary/90"
+              )}
+            >
+              🎮 Play Game
+            </button>
+          </div>
         </div>
       </section>
     </>
