@@ -1841,7 +1841,7 @@ export function RocketShip() {
 
   return (
     <>
-      {/* Game toggle button - always visible in bottom-right corner */}
+      {/* Game toggle button - always visible, position changes on mobile */}
       <button
         onClick={() => {
           const newVisibility = !isGameVisible;
@@ -1852,7 +1852,7 @@ export function RocketShip() {
             hasStartedRef.current = false;
           }
         }}
-        className="fixed bottom-4 right-4 z-[200] flex size-14 items-center justify-center rounded-full border-2 bg-primary/30 text-2xl backdrop-blur-sm transition-all hover:scale-110 hover:bg-primary/50 active:scale-95"
+        className="fixed right-4 top-4 z-[200] flex size-14 items-center justify-center rounded-full border-2 bg-primary/30 text-2xl backdrop-blur-sm transition-all hover:scale-110 hover:bg-primary/50 active:scale-95 md:bottom-4 md:top-auto"
         style={{
           borderColor: isGameVisible ? '#10b981' : '#3b82f6',
           backgroundColor: isGameVisible ? 'rgba(16, 185, 129, 0.3)' : 'rgba(59, 130, 246, 0.3)',
