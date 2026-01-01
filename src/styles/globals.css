@@ -124,3 +124,12 @@
     }
   }
 }
+
+/* Hide site elements when game is active */
+body.game-active header,
+body.game-active nav,
+body.game-active footer,
+body.game-active aside,
+body.game-active #site-hero {
+  display: none !important;
+}
