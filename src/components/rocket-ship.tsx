@@ -15,6 +15,7 @@ interface Asteroid {
   speed: number;
   rotation: number;
   rotationSpeed: number;
+  type: 'asteroid' | 'bug';
 }
 
 export function RocketShip() {
@@ -89,11 +90,14 @@ export function RocketShip() {
       ctx.closePath();
       ctx.fill();
 
-      // Window
-      ctx.fillStyle = '#60a5fa';
-      ctx.beginPath();
-      ctx.arc(x + rocket.width / 2, y + rocket.height * 0.3, 12, 0, Math.PI * 2);
-      ctx.fill();
+      // JS text centered on rocket body
+      ctx.save();
+      ctx.fillStyle = '#f7df1e';
+      ctx.font = 'bold 18px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('JS', x + rocket.width / 2, y + rocket.height * 0.4);
+      ctx.restore();
 
       // Wings
       ctx.fillStyle = '#1e40af';
@@ -151,6 +155,11 @@ export function RocketShip() {
 
     // Draw asteroid
     const drawAsteroid = (asteroid: Asteroid) => {
+      if (asteroid.type === 'bug') {
+        drawBug(asteroid);
+        return;
+      }
+
       ctx.save();
       ctx.translate(asteroid.x, asteroid.y);
       ctx.rotate(asteroid.rotation);
@@ -192,6 +201,67 @@ export function RocketShip() {
       ctx.restore();
     };
 
+    // Draw bug
+    const drawBug = (bug: Asteroid) => {
+      ctx.save();
+      ctx.translate(bug.x, bug.y);
+      ctx.rotate(bug.rotation);
+
+      const size = bug.radius;
+
+      // Bug body
+      ctx.fillStyle = '#dc2626';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, size * 0.8, size, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Bug head
+      ctx.fillStyle = '#991b1b';
+      ctx.beginPath();
+      ctx.arc(0, -size * 0.7, size * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Antennae
+      ctx.strokeStyle = '#991b1b';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-size * 0.3, -size * 1.1);
+      ctx.lineTo(-size * 0.2, -size * 0.9);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(size * 0.3, -size * 1.1);
+      ctx.lineTo(size * 0.2, -size * 0.9);
+      ctx.stroke();
+
+      // Legs
+      ctx.strokeStyle = '#7f1d1d';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 3; i++) {
+        const yPos = -size * 0.3 + i * size * 0.3;
+        // Left legs
+        ctx.beginPath();
+        ctx.moveTo(-size * 0.8, yPos);
+        ctx.lineTo(-size * 1.2, yPos + size * 0.2);
+        ctx.stroke();
+        // Right legs
+        ctx.beginPath();
+        ctx.moveTo(size * 0.8, yPos);
+        ctx.lineTo(size * 1.2, yPos + size * 0.2);
+        ctx.stroke();
+      }
+
+      // Eyes
+      ctx.fillStyle = '#fef08a';
+      ctx.beginPath();
+      ctx.arc(-size * 0.15, -size * 0.7, size * 0.12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(size * 0.15, -size * 0.7, size * 0.12, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    };
+
     // Check collision between bullet and asteroid
     const checkCollision = (bullet: Bullet, asteroid: Asteroid): boolean => {
       const dx = bullet.x - asteroid.x;
@@ -202,10 +272,11 @@ export function RocketShip() {
 
     // Spawn asteroids
     const spawnAsteroid = () => {
-      const radius = 20 + Math.random() * 20;
+      const isBug = Math.random() < 0.3; // 30% chance of spawning a bug
+      const radius = isBug ? 15 + Math.random() * 10 : 20 + Math.random() * 20;
       const x = Math.random() * canvas.width;
       const y = -radius;
-      const speed = 1 + Math.random() * 2;
+      const speed = isBug ? 2 + Math.random() * 2 : 1 + Math.random() * 2;
       const rotationSpeed = (Math.random() - 0.5) * 0.05;
 
       asteroidsRef.current.push({
@@ -215,6 +286,7 @@ export function RocketShip() {
         speed,
         rotation: Math.random() * Math.PI * 2,
         rotationSpeed,
+        type: isBug ? 'bug' : 'asteroid',
       });
     };
 
