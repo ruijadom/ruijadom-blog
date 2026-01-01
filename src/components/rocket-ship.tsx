@@ -102,7 +102,7 @@ export function RocketShip() {
       id: `deploy-${Date.now()}`,
       message: `${structureName} Deployed!\n"${structure.quote}"`,
       timestamp: Date.now(),
-      duration: 5000, // Show for 5 seconds
+      duration: 7000, // Show for 7 seconds
       type: 'deploy',
     });
   });
@@ -1394,7 +1394,10 @@ export function RocketShip() {
       const radius = 20 + Math.random() * 20;
       const x = Math.random() * canvas.width;
       const y = -radius;
-      const speed = 1 + Math.random() * 2;
+      // Reduce speed on mobile (smaller screens)
+      const isMobile = canvas.width < 768;
+      const speedMultiplier = isMobile ? 0.6 : 1; // 40% slower on mobile
+      const speed = (1 + Math.random() * 2) * speedMultiplier;
       const rotationSpeed = (Math.random() - 0.5) * 0.05;
 
       asteroidsRef.current.push({
@@ -1413,8 +1416,11 @@ export function RocketShip() {
       const radius = 15 + Math.random() * 10;
       const x = Math.random() * canvas.width;
       const y = -radius;
+      // Reduce speed on mobile (smaller screens)
+      const isMobile = canvas.width < 768;
+      const speedMultiplier = isMobile ? 0.6 : 1; // 40% slower on mobile
       // Use level-based speed for bugs
-      const speed = level.bugSpeed + Math.random();
+      const speed = (level.bugSpeed + Math.random()) * speedMultiplier;
       const rotationSpeed = (Math.random() - 0.5) * 0.05;
 
       asteroidsRef.current.push({
@@ -1620,13 +1626,18 @@ export function RocketShip() {
       }
 
       // Spawn asteroids periodically based on level
-      if (now - lastAsteroidSpawnRef.current > level.asteroidSpawnRate) {
+      // Adjust spawn rate for mobile (spawn less frequently)
+      const isMobile = canvas.width < 768;
+      const asteroidSpawnMultiplier = isMobile ? 1.5 : 1; // 50% slower spawn on mobile
+      const bugSpawnMultiplier = isMobile ? 1.5 : 1; // 50% slower spawn on mobile
+      
+      if (now - lastAsteroidSpawnRef.current > level.asteroidSpawnRate * asteroidSpawnMultiplier) {
         spawnAsteroid();
         lastAsteroidSpawnRef.current = now;
       }
 
       // Spawn bugs periodically based on level
-      if (now - lastBugSpawnRef.current > level.bugSpawnRate) {
+      if (now - lastBugSpawnRef.current > level.bugSpawnRate * bugSpawnMultiplier) {
         spawnBug();
         lastBugSpawnRef.current = now;
       }
