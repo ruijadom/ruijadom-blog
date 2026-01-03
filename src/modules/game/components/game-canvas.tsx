@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { useResourceSystem, useLevelSystem, useGamePersistence } from '@/modules/game/hooks';
+import { useResourceSystem, useLevelSystem, useGamePersistence, useGameSounds } from '@/modules/game/hooks';
 import type { DefensiveStructure } from '@/modules/game/types/game';
 import Particles from '@/components/particles';
 import { GameWelcomeScreen } from '@/modules/game/components/game-welcome-screen';
@@ -33,12 +33,12 @@ interface Asteroid {
   dustEmitted?: number;
 }
 
-interface BugEgg {
+interface BugNebula {
   id: string;
   x: number;
   y: number;
   createdAt: number;
-  hatchTime: number; // Time when it will hatch (5 seconds after creation)
+  spawnTime: number; // Time when it will spawn bugs (5 seconds after creation)
   radius: number;
 }
 
@@ -67,6 +67,12 @@ interface LevelUpAnimation {
   level: number;
 }
 
+interface HorizontalLaser {
+  y: number;
+  startTime: number;
+  duration: number;
+}
+
 export function GameCanvas() {
   // Game state
   const [hasStarted, setHasStarted] = useState(false);
@@ -87,7 +93,7 @@ export function GameCanvas() {
   const particlesRef = useRef<Particle[]>([]);
   const deployAnimationsRef = useRef<DeployAnimation[]>([]);
   const levelUpAnimationRef = useRef<LevelUpAnimation | null>(null);
-  const keysRef = useRef({ left: false, right: false, space: false });
+  const keysRef = useRef({ left: false, right: false, space: false, laser: false });
   const animationRef = useRef<number>();
   const lastShotRef = useRef(0);
   const lastAsteroidSpawnRef = useRef(0);
@@ -108,9 +114,15 @@ export function GameCanvas() {
   const highScoreRef = useRef(0);
   const rocketInitializedRef = useRef(false);
   
-  // Bug eggs system
-  const bugEggsRef = useRef<BugEgg[]>([]);
+  // Bug nebula system
+  const bugNebulasRef = useRef<BugNebula[]>([]);
   const bugSpawnCountRef = useRef(0);
+  
+  // Horizontal laser system
+  const horizontalLaserRef = useRef<HorizontalLaser | null>(null);
+  const LASER_COOLDOWN = 10000; // 10 seconds cooldown
+  const LASER_DURATION = 500; // 0.5 seconds active
+  const laserCooldownRef = useRef(Date.now() - LASER_COOLDOWN); // Start ready
   
   // Resource system hook with deploy callback
   const { resources, collectResource, deployStructure, resetResources } = useResourceSystem((structure) => {
@@ -149,6 +161,9 @@ export function GameCanvas() {
 
   // Level system hook
   const { level, checkLevelUp, resetLevel } = useLevelSystem(resources.totalCollected);
+
+  // Sound system hook
+  const sounds = useGameSounds();
 
   // Load high score from localStorage on mount
   useEffect(() => {
@@ -193,7 +208,9 @@ export function GameCanvas() {
     particlesRef.current = [];
     deployAnimationsRef.current = [];
     levelUpAnimationRef.current = null;
-    bugEggsRef.current = [];
+    bugNebulasRef.current = [];
+    horizontalLaserRef.current = null;
+    laserCooldownRef.current = Date.now() - LASER_COOLDOWN; // Start ready
     
     lastShotRef.current = 0;
     lastAsteroidSpawnRef.current = 0;
@@ -391,6 +408,10 @@ export function GameCanvas() {
         e.preventDefault();
         keysRef.current.space = true;
       }
+      if (e.key === 'b' || e.key === 'B') {
+        e.preventDefault();
+        keysRef.current.laser = true;
+      }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -402,6 +423,9 @@ export function GameCanvas() {
       }
       if (e.key === ' ' || e.key === 'Spacebar') {
         keysRef.current.space = false;
+      }
+      if (e.key === 'b' || e.key === 'B') {
+        keysRef.current.laser = false;
       }
     };
 
@@ -630,6 +654,50 @@ export function GameCanvas() {
       ctx.restore();
     };
 
+    const drawHorizontalLaser = (laser: HorizontalLaser, now: number) => {
+      const elapsed = now - laser.startTime;
+      const progress = elapsed / laser.duration;
+      
+      if (progress >= 1) return;
+      
+      ctx.save();
+      
+      // Laser beam effect with multiple layers
+      const alpha = 1 - progress;
+      const thickness = 8;
+      
+      // Outer glow
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = '#ef4444';
+      ctx.strokeStyle = `rgba(239, 68, 68, ${alpha * 0.3})`;
+      ctx.lineWidth = thickness * 3;
+      ctx.beginPath();
+      ctx.moveTo(0, laser.y);
+      ctx.lineTo(canvas.width, laser.y);
+      ctx.stroke();
+      
+      // Middle layer
+      ctx.shadowBlur = 10;
+      ctx.strokeStyle = `rgba(248, 113, 113, ${alpha * 0.6})`;
+      ctx.lineWidth = thickness * 2;
+      ctx.beginPath();
+      ctx.moveTo(0, laser.y);
+      ctx.lineTo(canvas.width, laser.y);
+      ctx.stroke();
+      
+      // Core beam
+      ctx.shadowBlur = 5;
+      ctx.strokeStyle = `rgba(254, 202, 202, ${alpha})`;
+      ctx.lineWidth = thickness;
+      ctx.beginPath();
+      ctx.moveTo(0, laser.y);
+      ctx.lineTo(canvas.width, laser.y);
+      ctx.stroke();
+      
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    };
+
     const drawHUD = () => {
       ctx.save();
       ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
@@ -695,6 +763,63 @@ export function GameCanvas() {
       ctx.fillStyle = '#10b981';
       ctx.font = '12px Arial';
       ctx.fillText(`High: ${highScoreRef.current}`, canvas.width - rightBoxWidth, 95);
+      
+      ctx.restore();
+
+      // Laser cooldown indicator
+      ctx.save();
+      const now = Date.now();
+      const timeSinceLastLaser = now - laserCooldownRef.current;
+      const cooldownProgress = Math.min(timeSinceLastLaser / LASER_COOLDOWN, 1);
+      const laserBoxWidth = 180;
+      const laserBoxX = canvas.width - laserBoxWidth - 10;
+      const laserBoxY = 130;
+      
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.fillRect(laserBoxX, laserBoxY, laserBoxWidth, 60);
+      
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 14px Arial';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText('Laser (B):', laserBoxX + 10, laserBoxY + 10);
+      
+      // Cooldown bar
+      const barWidth = laserBoxWidth - 20;
+      const barHeight = 20;
+      const barX = laserBoxX + 10;
+      const barY = laserBoxY + 32;
+      
+      // Background
+      ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
+      ctx.fillRect(barX, barY, barWidth, barHeight);
+      
+      // Progress
+      if (cooldownProgress >= 1) {
+        ctx.fillStyle = '#10b981'; // Green when ready
+      } else {
+        ctx.fillStyle = '#ef4444'; // Red when cooling down
+      }
+      ctx.fillRect(barX, barY, barWidth * cooldownProgress, barHeight);
+      
+      // Border
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(barX, barY, barWidth, barHeight);
+      
+      // Text
+      if (cooldownProgress >= 1) {
+        ctx.fillStyle = '#10b981';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('READY!', barX + barWidth / 2, barY + 5);
+      } else {
+        const remainingTime = Math.ceil((LASER_COOLDOWN - timeSinceLastLaser) / 1000);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${remainingTime}s`, barX + barWidth / 2, barY + 5);
+      }
       
       ctx.restore();
 
@@ -937,68 +1062,78 @@ export function GameCanvas() {
       ctx.restore();
     };
 
-    const drawBugEgg = (egg: BugEgg) => {
+    const drawBugNebula = (nebula: BugNebula) => {
       const now = Date.now();
-      const timeUntilHatch = egg.hatchTime - now;
-      const pulseSpeed = Math.max(100, timeUntilHatch / 10); // Pulse faster as it gets closer to hatching
-      const pulseIntensity = 0.8 + Math.sin(now / pulseSpeed) * 0.2;
+      const age = now - nebula.createdAt;
+      const timeUntilSpawn = nebula.spawnTime - now;
+      
+      // Pulsing effect that gets faster as spawn time approaches
+      const pulseSpeed = Math.max(100, timeUntilSpawn / 10);
+      const pulseIntensity = 0.7 + Math.sin(now / pulseSpeed) * 0.3;
+      
+      // Rotation for swirling effect
+      const rotation = (age / 2000) * Math.PI * 2;
 
       ctx.save();
-      ctx.translate(egg.x, egg.y);
+      ctx.translate(nebula.x, nebula.y);
+      ctx.rotate(rotation);
 
-      // Outer glow
-      ctx.shadowBlur = 15 * pulseIntensity;
-      ctx.shadowColor = '#fbbf24';
-      ctx.fillStyle = `rgba(251, 191, 36, ${0.2 * pulseIntensity})`;
+      // Outer glow layers (green nebula effect)
+      for (let i = 3; i > 0; i--) {
+        const glowRadius = nebula.radius * (1 + i * 0.3) * pulseIntensity;
+        const alpha = (0.15 / i) * pulseIntensity;
+        
+        ctx.fillStyle = `rgba(16, 185, 129, ${alpha})`; // Green
+        ctx.beginPath();
+        ctx.arc(0, 0, glowRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Main nebula body with gradient
+      const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, nebula.radius);
+      gradient.addColorStop(0, `rgba(52, 211, 153, ${0.8 * pulseIntensity})`); // Bright green center
+      gradient.addColorStop(0.5, `rgba(16, 185, 129, ${0.5 * pulseIntensity})`); // Medium green
+      gradient.addColorStop(1, `rgba(5, 150, 105, ${0.2 * pulseIntensity})`); // Dark green edge
+      
+      ctx.fillStyle = gradient;
       ctx.beginPath();
-      ctx.arc(0, 0, egg.radius * 1.3, 0, Math.PI * 2);
+      ctx.arc(0, 0, nebula.radius, 0, Math.PI * 2);
       ctx.fill();
-      ctx.shadowBlur = 0;
 
-      // Egg body (oval shape)
-      ctx.fillStyle = '#fef3c7'; // Light yellow
+      // Swirling particles effect
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2 + rotation * 2;
+        const distance = nebula.radius * 0.6;
+        const x = Math.cos(angle) * distance;
+        const y = Math.sin(angle) * distance;
+        
+        ctx.fillStyle = `rgba(167, 243, 208, ${0.6 * pulseIntensity})`; // Light green
+        ctx.beginPath();
+        ctx.arc(x, y, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Inner core
+      ctx.fillStyle = `rgba(236, 253, 245, ${0.4 * pulseIntensity})`; // Very light green
       ctx.beginPath();
-      ctx.ellipse(0, 0, egg.radius * 0.8, egg.radius, 0, 0, Math.PI * 2);
+      ctx.arc(0, 0, nebula.radius * 0.3, 0, Math.PI * 2);
       ctx.fill();
-
-      // Egg spots
-      ctx.fillStyle = '#fbbf24';
-      ctx.beginPath();
-      ctx.arc(-egg.radius * 0.3, -egg.radius * 0.2, egg.radius * 0.15, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(egg.radius * 0.2, egg.radius * 0.3, egg.radius * 0.1, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Egg outline
-      ctx.strokeStyle = '#f59e0b';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, egg.radius * 0.8, egg.radius, 0, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // Emoji
-      ctx.fillStyle = '#000000';
-      ctx.font = 'bold 20px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('🥚', 0, 0);
       
       ctx.restore();
     };
 
-    const updateBugEggs = (now: number) => {
-      bugEggsRef.current = bugEggsRef.current.filter((egg) => {
-        // Check if egg should hatch
-        if (now >= egg.hatchTime) {
-          console.log('🐛 Egg hatching! Spawning 2 bugs');
+    const updateBugNebulas = (now: number) => {
+      bugNebulasRef.current = bugNebulasRef.current.filter((nebula) => {
+        // Check if nebula should spawn bugs
+        if (now >= nebula.spawnTime) {
+          console.log('🌫️ Nebula spawning! Creating 2 bugs');
           
-          // Spawn 2 bugs from this egg
+          // Spawn 2 bugs from this nebula
           for (let i = 0; i < 2; i++) {
             const angle = (i / 2) * Math.PI * 2 + Math.random();
             const distance = 20;
-            const x = egg.x + Math.cos(angle) * distance;
-            const y = egg.y + Math.sin(angle) * distance;
+            const x = nebula.x + Math.cos(angle) * distance;
+            const y = nebula.y + Math.sin(angle) * distance;
             
             const radius = 15 + Math.random() * 10;
             const isMobile = canvas.width < 768;
@@ -1013,22 +1148,23 @@ export function GameCanvas() {
               rotation: Math.random() * Math.PI * 2,
               rotationSpeed: (Math.random() - 0.5) * 0.05,
               type: 'bug',
-              isSpecial: false, // Hatched bugs are not special
+              isSpecial: false, // Spawned bugs are not special
             });
           }
           
-          // Create explosion particles at egg location
-          createExplosionParticles(egg.x, egg.y, '#fbbf24', 8);
+          // Create explosion particles at nebula location
+          createExplosionParticles(nebula.x, nebula.y, '#10b981', 12);
+          sounds.playNebulaWarning();
           
           notificationsRef.current.push({
-            id: `egg-hatched-${Date.now()}`,
-            message: '🐛 Egg Hatched! 2 Bugs Spawned!',
+            id: `nebula-spawned-${Date.now()}`,
+            message: '🌫️ Nebula Spawned 2 Bugs!',
             timestamp: now,
             duration: 2000,
             type: 'damage',
           });
           
-          // Remove the egg
+          // Remove the nebula
           return false;
         }
         
@@ -1368,10 +1504,16 @@ export function GameCanvas() {
             drawSpaceStation(structure);
           }
         });
-        bugEggsRef.current.forEach((egg) => {
-          drawBugEgg(egg);
+        bugNebulasRef.current.forEach((nebula) => {
+          drawBugNebula(nebula);
         });
         drawRocket(rocket.x, rocket.y);
+        
+        // Draw horizontal laser if active (even when paused)
+        if (horizontalLaserRef.current) {
+          drawHorizontalLaser(horizontalLaserRef.current, now);
+        }
+        
         drawHUD();
         
         ctx.restore();
@@ -1397,6 +1539,30 @@ export function GameCanvas() {
           owner: 'player',
         });
         lastShotRef.current = now;
+        sounds.playLaserShot();
+      }
+
+      // Horizontal laser activation
+      if (keysRef.current.laser && !horizontalLaserRef.current) {
+        const timeSinceLastLaser = now - laserCooldownRef.current;
+        if (timeSinceLastLaser >= LASER_COOLDOWN) {
+          // Activate laser at rocket's Y position
+          horizontalLaserRef.current = {
+            y: rocket.y + rocket.height / 2,
+            startTime: now,
+            duration: LASER_DURATION,
+          };
+          laserCooldownRef.current = now;
+          sounds.playHorizontalLaser();
+          
+          notificationsRef.current.push({
+            id: `laser-${now}`,
+            message: '⚡ LASER ACTIVATED!',
+            timestamp: now,
+            duration: 1000,
+            type: 'info',
+          });
+        }
       }
 
       const isMobile = canvas.width < 768;
@@ -1414,6 +1580,87 @@ export function GameCanvas() {
       }
 
       processDefensiveStructures(now);
+
+      // Check laser collisions with asteroids/bugs
+      if (horizontalLaserRef.current) {
+        const laser = horizontalLaserRef.current;
+        const elapsed = now - laser.startTime;
+        
+        if (elapsed >= laser.duration) {
+          horizontalLaserRef.current = null;
+        } else {
+          // Check collision with all asteroids/bugs at laser Y position
+          asteroidsRef.current = asteroidsRef.current.filter((asteroid) => {
+            const hitByLaser = Math.abs(asteroid.y - laser.y) < asteroid.radius;
+            
+            if (hitByLaser) {
+              if (asteroid.type === 'asteroid') {
+                scoreRef.current += 10;
+                collectResource();
+                persistence.trackResourceCollect();
+              } else {
+                scoreRef.current += 20;
+                persistence.trackBugKill();
+                
+                // If it's a special bug, create nebula
+                if (asteroid.isSpecial) {
+                  console.log('🌫️ Special bug destroyed by laser! Creating nebula');
+                  
+                  bugNebulasRef.current.push({
+                    id: `nebula-${now}`,
+                    x: asteroid.x,
+                    y: asteroid.y,
+                    createdAt: now,
+                    spawnTime: now + 5000,
+                    radius: 30,
+                  });
+                  
+                  notificationsRef.current.push({
+                    id: `nebula-created-${now}`,
+                    message: '🌫️ Bug Nebula Created!',
+                    timestamp: now,
+                    duration: 2000,
+                    type: 'info',
+                  });
+                }
+              }
+              
+              createExplosionParticles(
+                asteroid.x,
+                asteroid.y,
+                asteroid.type === 'asteroid' ? '#78716c' : '#dc2626',
+                8
+              );
+              sounds.playExplosion();
+              
+              return false;
+            }
+            
+            return true;
+          });
+          
+          // Check collision with nebulas
+          bugNebulasRef.current = bugNebulasRef.current.filter((nebula) => {
+            const hitByLaser = Math.abs(nebula.y - laser.y) < nebula.radius;
+            
+            if (hitByLaser) {
+              scoreRef.current += 50;
+              createExplosionParticles(nebula.x, nebula.y, '#10b981', 16);
+              sounds.playExplosion();
+              notificationsRef.current.push({
+                id: `nebula-destroyed-${now}`,
+                message: '💥 Nebula Destroyed! +50',
+                timestamp: now,
+                duration: 2000,
+                type: 'info',
+              });
+              return false;
+            }
+            
+            return true;
+          });
+        }
+      }
 
       asteroidsRef.current = asteroidsRef.current.filter((asteroid) => {
         if (asteroid.type === 'bug') {
@@ -1443,6 +1690,7 @@ export function GameCanvas() {
         
         if (asteroid.type === 'bug' && !isPaused && !isGameOver && checkRocketBugCollision(rocket, asteroid)) {
           rocket.lives -= 1;
+          sounds.playHit();
           
           notificationsRef.current.push({
             id: `damage-${Date.now()}`,
@@ -1511,28 +1759,22 @@ export function GameCanvas() {
               scoreRef.current += 20;
               persistence.trackBugKill();
               
-              // If it's a special bug, drop 2 eggs
+              // If it's a special bug, drop 1 nebula
               if (asteroid.isSpecial) {
-                console.log('🥚 Special bug destroyed! Dropping 2 eggs');
-                for (let i = 0; i < 2; i++) {
-                  const angle = (i / 2) * Math.PI * 2 + Math.random();
-                  const distance = 30;
-                  const eggX = asteroid.x + Math.cos(angle) * distance;
-                  const eggY = asteroid.y + Math.sin(angle) * distance;
-                  
-                  bugEggsRef.current.push({
-                    id: `egg-${Date.now()}-${i}`,
-                    x: eggX,
-                    y: eggY,
-                    createdAt: now,
-                    hatchTime: now + 5000, // Hatch after 5 seconds
-                    radius: 15,
-                  });
-                }
+                console.log('🌫️ Special bug destroyed! Creating nebula');
+                
+                bugNebulasRef.current.push({
+                  id: `nebula-${Date.now()}`,
+                  x: asteroid.x,
+                  y: asteroid.y,
+                  createdAt: now,
+                  spawnTime: now + 5000, // Spawn bugs after 5 seconds
+                  radius: 30,
+                });
                 
                 notificationsRef.current.push({
-                  id: `eggs-dropped-${Date.now()}`,
-                  message: '🥚 Bug Eggs Dropped!',
+                  id: `nebula-created-${Date.now()}`,
+                  message: '🌫️ Bug Nebula Created!',
                   timestamp: now,
                   duration: 2000,
                   type: 'info',
@@ -1546,6 +1788,7 @@ export function GameCanvas() {
               asteroid.type === 'asteroid' ? '#78716c' : '#dc2626',
               8
             );
+            sounds.playExplosion();
             
             return false;
           }
@@ -1565,7 +1808,7 @@ export function GameCanvas() {
         return true;
       });
 
-      updateBugEggs(now);
+      updateBugNebulas(now);
 
       if (now - lastResourceCheckRef.current > 100) {
         const deployThreshold = 20;
@@ -1575,6 +1818,7 @@ export function GameCanvas() {
           
           for (let i = 0; i < deployCount; i++) {
             deployStructure(canvas.width, canvas.height);
+            sounds.playDeploy();
           }
           
           lastDeployedAtRef.current = resources.totalCollected;
@@ -1592,6 +1836,7 @@ export function GameCanvas() {
             duration: 2000,
             level: level.current,
           };
+          sounds.playLevelUp();
           
           notificationsRef.current.push({
             id: `levelup-${Date.now()}`,
@@ -1605,8 +1850,8 @@ export function GameCanvas() {
         lastResourceCheckRef.current = now;
       }
 
-      bugEggsRef.current.forEach((egg) => {
-        drawBugEgg(egg);
+      bugNebulasRef.current.forEach((nebula) => {
+        drawBugNebula(nebula);
       });
 
       structuresRef.current.forEach((structure) => {
@@ -1621,6 +1866,12 @@ export function GameCanvas() {
       drawParticles();
       drawDeployAnimations(now);
       drawLevelUpAnimation(now);
+      
+      // Draw horizontal laser if active
+      if (horizontalLaserRef.current) {
+        drawHorizontalLaser(horizontalLaserRef.current, now);
+      }
+      
       drawHUD();
       drawNotifications();
 
@@ -1640,7 +1891,7 @@ export function GameCanvas() {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [hasStarted, showHelp, isPaused, isGameOver, showStats, resources, level, collectResource, deployStructure, checkLevelUp, handleStartGame, handleRestart, persistence]);
+  }, [hasStarted, showHelp, isPaused, isGameOver, showStats, resources, level, collectResource, deployStructure, checkLevelUp, handleStartGame, handleRestart, persistence, sounds]);
 
   return (
     <>
