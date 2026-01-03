@@ -1672,13 +1672,17 @@ export function RocketShip() {
             
             asteroid.x += normalizedX * asteroid.speed;
             asteroid.y += normalizedY * asteroid.speed;
+            
+            // Calculate rotation angle to face the rocket (head pointing toward rocket)
+            // atan2 gives angle in radians, and we add PI/2 because bug is drawn with head at top (negative Y)
+            asteroid.rotation = Math.atan2(dy, dx) + Math.PI / 2;
           }
         } else {
           // Asteroids fall straight down
           asteroid.y += asteroid.speed;
+          // Only asteroids rotate randomly
+          asteroid.rotation += asteroid.rotationSpeed;
         }
-        
-        asteroid.rotation += asteroid.rotationSpeed;
         
         // Check collision with rocket (only for bugs)
         if (asteroid.type === 'bug' && checkRocketBugCollision(rocket, asteroid)) {
