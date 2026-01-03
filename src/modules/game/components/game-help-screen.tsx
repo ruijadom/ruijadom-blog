@@ -38,6 +38,7 @@ export function GameHelpScreen({ onClose }: GameHelpScreenProps) {
             <div className="space-y-1 text-center md:space-y-2 md:text-right">
               <p>← → or A D: Move</p>
               <p>Space: Shoot</p>
+              <p>B: Horizontal Laser</p>
               <p>?: Toggle Help</p>
             </div>
             <div className="space-y-1 text-center md:space-y-2 md:text-left">
@@ -47,6 +48,9 @@ export function GameHelpScreen({ onClose }: GameHelpScreenProps) {
           </div>
           <p className="mt-2 text-center text-xs text-gray-400 md:mt-3 md:hidden md:text-sm">
             Touch controls available at bottom
+          </p>
+          <p className="mt-2 text-center text-xs text-primary md:text-sm">
+            ⚡ Laser has 10s cooldown and destroys everything in its path!
           </p>
         </div>
 

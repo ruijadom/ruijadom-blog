@@ -38,7 +38,7 @@ export function useGamePersistence(options: UseGamePersistenceOptions = {}) {
   const { autoSave = true, autoSaveInterval = 30000 } = options; // Default: 30 seconds
   
   const autoSaveTimerRef = useRef<ReturnType<typeof setInterval>>();
-  const gameStartTimeRef = useRef<number>(0);
+  const gameStartTimeRef = useRef<number>(Date.now()); // Initialize with current time
   const statsRef = useRef<{
     bugsKilled: number;
     asteroidsDestroyed: number;
