@@ -31,7 +31,7 @@ export const createResourceSlice: StateCreator<ResourceSlice> = (set, get) => ({
   })),
   
   deployStructure: (canvasWidth, canvasHeight, onDeploy) => {
-    const { structures, totalCollected } = get();
+    const { structures } = get();
     
     // Determine structure type based on deploy count
     const totalStructures = structures.length;

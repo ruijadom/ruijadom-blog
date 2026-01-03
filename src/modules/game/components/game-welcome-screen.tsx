@@ -1,18 +1,27 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
+
 interface GameWelcomeScreenProps {
   onStart: () => void;
+  onViewStats?: () => void;
 }
 
-export function GameWelcomeScreen({ onStart }: GameWelcomeScreenProps) {
+export function GameWelcomeScreen({ onStart, onViewStats }: GameWelcomeScreenProps) {
+  const router = useRouter();
+
+  const handleExitToHome = () => {
+    router.push('/');
+  };
+
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/95">
       <div className="mx-4 flex max-w-3xl flex-col items-center gap-8">
         {/* Title */}
         <div className="text-center">
-          <h1 className="mb-4 text-6xl font-bold text-primary">SPACE DEV</h1>
+          <h1 className="mb-4 text-6xl font-bold text-primary">DEV SPACE</h1>
           <p className="text-2xl font-bold text-green-500">
-            Build Infrastructure, Not Just Bugs
+            Build Infrastructure, Not Just Code
           </p>
         </div>
 
@@ -54,14 +63,32 @@ export function GameWelcomeScreen({ onStart }: GameWelcomeScreenProps) {
           </p>
         </div>
 
-        {/* Start Button */}
-        <button
-          onClick={onStart}
-          className="group relative overflow-hidden rounded-lg border-3 border-purple-600 bg-primary px-16 py-4 text-2xl font-bold text-white shadow-lg shadow-primary/50 transition-all hover:scale-105 hover:shadow-xl hover:shadow-primary/70 active:scale-95"
-        >
-          <span className="relative z-10">START GAME</span>
-          <div className="absolute inset-0 -z-0 bg-gradient-to-r from-primary to-purple-600 opacity-0 transition-opacity group-hover:opacity-100" />
-        </button>
+        {/* Buttons */}
+        <div className="flex flex-col gap-4 sm:flex-row">
+          <button
+            onClick={onStart}
+            className="group relative overflow-hidden rounded-lg border-2 border-purple-600 bg-primary px-16 py-4 text-2xl font-bold text-white shadow-lg shadow-primary/50 transition-all hover:scale-105 hover:shadow-xl hover:shadow-primary/70 active:scale-95"
+          >
+            <span className="relative z-10">START GAME</span>
+            <div className="absolute inset-0 -z-0 bg-gradient-to-r from-primary to-purple-600 opacity-0 transition-opacity group-hover:opacity-100" />
+          </button>
+
+          {onViewStats && (
+            <button
+              onClick={onViewStats}
+              className="rounded-lg bg-slate-700 px-8 py-4 text-xl font-bold text-white shadow-lg transition-all hover:scale-105 hover:bg-slate-600 active:scale-95"
+            >
+              📊 Stats
+            </button>
+          )}
+
+          <button
+            onClick={handleExitToHome}
+            className="rounded-lg bg-red-600 px-8 py-4 text-xl font-bold text-white shadow-lg transition-all hover:scale-105 hover:bg-red-700 active:scale-95"
+          >
+            ← Back to Home
+          </button>
+        </div>
 
         <p className="text-sm text-gray-400">
           Click button or press SPACE to start

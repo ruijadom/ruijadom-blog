@@ -3,7 +3,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useResourceSystem, useLevelSystem } from '@/modules/game/hooks';
 import type { DefensiveStructure } from '@/modules/game/types/game';
-import { useBoundGameStore } from '@/modules/game/store';
 import Particles from '@/components/particles';
 import { GameWelcomeScreen } from '@/modules/game/components/game-welcome-screen';
 import { GameHelpScreen } from '@/modules/game/components/game-help-screen';

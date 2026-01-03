@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { GameState } from '@/types/game';
+import type { GameState } from '@/modules/game/types/game';
 
 const HIGH_SCORE_KEY = 'spaceDevGameHighScore';
 

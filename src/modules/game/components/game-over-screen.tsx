@@ -1,13 +1,29 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
+
 interface GameOverScreenProps {
   score: number;
   highScore: number;
+  leaderboardPosition?: number; // Position in leaderboard (1-10), undefined if not in top 10
   onRestart: () => void;
+  onViewStats?: () => void;
 }
 
-export function GameOverScreen({ score, highScore, onRestart }: GameOverScreenProps) {
+export function GameOverScreen({ 
+  score, 
+  highScore, 
+  leaderboardPosition,
+  onRestart,
+  onViewStats,
+}: GameOverScreenProps) {
+  const router = useRouter();
   const isNewHighScore = score === highScore && score > 0;
+  const isInLeaderboard = leaderboardPosition !== undefined;
+
+  const handleExitToHome = () => {
+    router.push('/');
+  };
 
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/85 backdrop-blur-sm">
@@ -32,6 +48,15 @@ export function GameOverScreen({ score, highScore, onRestart }: GameOverScreenPr
               <span className="text-xl font-bold text-yellow-400">🎉 New High Score!</span>
             </div>
           )}
+
+          {isInLeaderboard && (
+            <div className="rounded-lg border border-primary/30 bg-primary/20 px-6 py-2">
+              <span className="text-lg font-bold text-primary">
+                {leaderboardPosition === 1 ? '🥇' : leaderboardPosition === 2 ? '🥈' : leaderboardPosition === 3 ? '🥉' : '🏆'} 
+                {' '}Top {leaderboardPosition} Score!
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Educational Messages */}
@@ -44,13 +69,35 @@ export function GameOverScreen({ score, highScore, onRestart }: GameOverScreenPr
           </p>
         </div>
 
-        {/* Restart Button */}
-        <button
-          onClick={onRestart}
-          className="mt-4 rounded-lg bg-green-500 px-12 py-4 text-2xl font-bold text-white shadow-lg shadow-green-500/50 transition-all hover:scale-105 hover:bg-green-600 hover:shadow-xl hover:shadow-green-500/70 active:scale-95"
-        >
+        {/* Buttons */}
+        <div className="mt-4 flex flex-col gap-4 sm:flex-row">
+          <button
+            onClick={onRestart}
+            className="rounded-lg bg-green-500 px-12 py-4 text-2xl font-bold text-white shadow-lg shadow-green-500/50 transition-all hover:scale-105 hover:bg-green-600 hover:shadow-xl hover:shadow-green-500/70 active:scale-95"
+          >
+            Restart Game
+          </button>
+          
+          {onViewStats && (
+            <button
+              onClick={onViewStats}
+              className="rounded-lg bg-primary/80 px-8 py-4 text-xl font-bold text-white shadow-lg transition-all hover:scale-105 hover:bg-primary hover:shadow-xl active:scale-95"
+            >
+              View Stats
+            </button>
+          )}
+
+          <button
+            onClick={handleExitToHome}
+            className="rounded-lg bg-red-600 px-8 py-4 text-xl font-bold text-white shadow-lg transition-all hover:scale-105 hover:bg-red-700 hover:shadow-xl active:scale-95"
+          >
+            Exit to Home
+          </button>
+        </div>
+
+        <p className="mt-2 text-sm text-gray-400">
           Press R to restart
-        </button>
+        </p>
       </div>
     </div>
   );
