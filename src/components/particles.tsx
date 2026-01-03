@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect } from "react";
 import useMousePosition from "@/hooks/use-mouse-position";
-import { ShootingStars } from "./shooting-starts";
+import { ShootingStars } from "@/modules/game/components/shooting-starts";
 
 interface ParticlesProps {
   className?: string;

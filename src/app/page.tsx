@@ -1,5 +1,5 @@
 import { siteConfig } from "@/config/site";
-import { RocketShip } from "@/components/rocket-ship";
+import { RocketShip } from "@/modules/game";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";

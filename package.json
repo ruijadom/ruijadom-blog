@@ -29,7 +29,8 @@
     "svg-pan-zoom": "^3.6.2",
     "tailwind-merge": "^2.3.0",
     "tailwindcss-animate": "^1.0.7",
-    "tocbot": "^4.32.2"
+    "tocbot": "^4.32.2",
+    "zustand": "^5.0.9"
   },
   "devDependencies": {
     "@types/node": "^20",
