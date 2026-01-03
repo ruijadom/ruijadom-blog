@@ -245,11 +245,21 @@ export function useResourceSystem(onDeploy?: (structure: DefensiveStructure) => 
 
   const deployStructure = useCallback(
     (canvasWidth: number, canvasHeight: number) => {
+      console.log('🎯 deployStructure called!');
       setResources((prev) => {
+        console.log('🔄 setResources callback executing', {
+          collected: prev.collected,
+          totalCollected: prev.totalCollected,
+          satellites: prev.satellites.length,
+          stations: prev.stations.length
+        });
+        
         // Determine structure type based on deploy count
         const totalStructures = prev.satellites.length + prev.stations.length;
         const structureType: 'satellite' | 'station' =
           totalStructures === 0 ? 'satellite' : totalStructures === 1 ? 'station' : totalStructures % 2 === 0 ? 'satellite' : 'station';
+
+        console.log('🏗️ Creating structure:', { type: structureType, totalStructures });
 
         // Random position across screen width (with margins)
         const margin = 100; // Keep structures away from edges
@@ -269,6 +279,7 @@ export function useResourceSystem(onDeploy?: (structure: DefensiveStructure) => 
           quote: getRandomQuote(structureType),
         };
 
+        console.log('✅ Calling onDeploy callback');
         // Call the onDeploy callback if provided
         if (onDeploy) {
           onDeploy(newStructure);

@@ -6,8 +6,10 @@ Nave espacial interativa estilo cartoon na página principal que permite movimen
 ## Implementation Details
 
 ### Location
-- **Component**: `src/components/rocket-ship.tsx`
+- **Component**: `src/modules/game/components/rocket-ship.tsx`
 - **Used in**: `src/app/page.tsx` (homepage only)
+- **Exported from**: `src/modules/game/index.ts`
+- **Module**: Game module with complete isolation
 
 ### Features
 - Nave espacial desenhada em canvas com estilo cartoon

@@ -1,8 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { useResourceSystem, useLevelSystem, DefensiveStructure } from './game-state';
-import Particles from './particles';
+import { useResourceSystem, useLevelSystem } from '@/modules/game/hooks';
+import type { DefensiveStructure } from '@/modules/game/types/game';
+import Particles from '@/components/particles';
+import { GameWelcomeScreen } from '@/modules/game/components/game-welcome-screen';
+import { GameHelpScreen } from '@/modules/game/components/game-help-screen';
+import { GamePauseScreen } from '@/modules/game/components/game-pause-screen';
+import { GameOverScreen } from '@/modules/game/components/game-over-screen';
 
 interface Bullet {
   x: number;
@@ -21,6 +26,30 @@ interface Asteroid {
   rotation: number;
   rotationSpeed: number;
   type: 'asteroid' | 'bug';
+  isSpecial?: boolean; // For special bugs that leave dust
+  lastDustEmission?: number; // Timestamp of last dust emission
+  dustEmitted?: number; // Count of dust particles emitted (max 6 for one nest)
+}
+
+interface DustParticle {
+  x: number;
+  y: number;
+  createdAt: number;
+  opacity: number;
+  size: number;
+}
+
+interface BugNest {
+  id: string;
+  x: number;
+  y: number;
+  health: number;
+  maxHealth: number;
+  createdAt: number;
+  lastSpawn: number;
+  spawnInterval: number; // 5000ms
+  maxDuration: number; // 30000ms
+  radius: number;
 }
 
 interface Particle {
@@ -50,6 +79,11 @@ interface LevelUpAnimation {
 
 export function RocketShip() {
   const [isGameVisible, setIsGameVisible] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [isGameOver, setIsGameOver] = useState(false);
+  
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rocketRef = useRef({ x: 0, y: 0, width: 60, height: 80, speed: 8, lives: 3 });
   const bulletsRef = useRef<Bullet[]>([]);
@@ -64,6 +98,7 @@ export function RocketShip() {
   const lastBugSpawnRef = useRef(0);
   const structuresRef = useRef<DefensiveStructure[]>([]);
   const lastResourceCheckRef = useRef(0);
+  const lastDeployedAtRef = useRef(0); // Track last deployed resource count
   const notificationsRef = useRef<Array<{ 
     id: string;
     message: string; 
@@ -73,17 +108,23 @@ export function RocketShip() {
   }>>([]);
   const damageFlashRef = useRef(0);
   const screenShakeRef = useRef({ x: 0, y: 0, intensity: 0 });
-  const isGameOverRef = useRef(false);
-  const finalScoreRef = useRef(0);
-  const isPausedRef = useRef(false);
   const scoreRef = useRef(0);
   const highScoreRef = useRef(0);
-  const hasStartedRef = useRef(false);
-  const showHelpRef = useRef(false);
-  const rocketInitializedRef = useRef(false); // Moved outside useEffect
+  const rocketInitializedRef = useRef(false);
+  
+  // New refs for dust trail and nests feature
+  const dustParticlesRef = useRef<DustParticle[]>([]);
+  const bugNestsRef = useRef<BugNest[]>([]);
+  const bugSpawnCountRef = useRef(0); // Track total bugs spawned to identify special bugs
   
   // Resource system hook with deploy callback
   const { resources, collectResource, deployStructure, resetResources } = useResourceSystem((structure) => {
+    console.log('📦 Deploy callback triggered!', {
+      structureType: structure.type,
+      structureId: structure.id,
+      currentStructures: structuresRef.current.length
+    });
+    
     // Add deployed structure to our ref
     structuresRef.current.push(structure);
     
@@ -98,6 +139,7 @@ export function RocketShip() {
     
     // Add notification with the quote - show for 5 seconds at the top
     const structureName = structure.type === 'satellite' ? '🛰️ Satellite' : '🏗️ Space Station';
+    console.log('📢 Adding notification:', structureName);
     notificationsRef.current.push({
       id: `deploy-${Date.now()}`,
       message: `${structureName} Deployed!\n"${structure.quote}"`,
@@ -143,19 +185,25 @@ export function RocketShip() {
     particlesRef.current = [];
     deployAnimationsRef.current = [];
     levelUpAnimationRef.current = null;
+    dustParticlesRef.current = [];
+    bugNestsRef.current = [];
     
     // Reset refs
     lastShotRef.current = 0;
     lastAsteroidSpawnRef.current = 0;
     lastBugSpawnRef.current = 0;
     lastResourceCheckRef.current = 0;
+    lastDeployedAtRef.current = 0;
     damageFlashRef.current = 0;
     screenShakeRef.current = { x: 0, y: 0, intensity: 0 };
-    isGameOverRef.current = false;
-    isPausedRef.current = false;
-    finalScoreRef.current = 0;
     scoreRef.current = 0;
-    // Don't reset rocketInitializedRef here - it should persist
+    bugSpawnCountRef.current = 0;
+    
+    // Reset states
+    setIsGameOver(false);
+    setIsPaused(false);
+    setHasStarted(false);
+    setShowHelp(false);
     
     // Reset resources and level using hooks
     resetResources();
@@ -248,16 +296,16 @@ export function RocketShip() {
     // Keyboard controls
     const handleKeyDown = (e: KeyboardEvent) => {
       // Space key to start game from welcome screen
-      if (!hasStartedRef.current && (e.key === ' ' || e.key === 'Spacebar')) {
+      if (!hasStarted && (e.key === ' ' || e.key === 'Spacebar')) {
         e.preventDefault();
-        hasStartedRef.current = true;
+        setHasStarted(true);
         return;
       }
 
       // ? key to toggle help (only when game has started)
-      if (hasStartedRef.current && (e.key === '?' || e.key === '/')) {
+      if (hasStarted && (e.key === '?' || e.key === '/')) {
         e.preventDefault();
-        showHelpRef.current = !showHelpRef.current;
+        setShowHelp(prev => !prev);
         return;
       }
 
@@ -266,14 +314,14 @@ export function RocketShip() {
         e.preventDefault();
         
         // Close help if it's open
-        if (showHelpRef.current) {
-          showHelpRef.current = false;
+        if (showHelp) {
+          setShowHelp(false);
           return;
         }
         
         // Don't allow pause if game is over or not started
-        if (!isGameOverRef.current && hasStartedRef.current) {
-          isPausedRef.current = !isPausedRef.current;
+        if (!isGameOver && hasStarted) {
+          setIsPaused(prev => !prev);
         }
         return;
       }
@@ -282,8 +330,6 @@ export function RocketShip() {
       if (e.key === 'r' || e.key === 'R') {
         e.preventDefault();
         resetGame();
-        hasStartedRef.current = false; // Show welcome screen again
-        showHelpRef.current = false; // Close help if open
         return;
       }
 
@@ -314,47 +360,28 @@ export function RocketShip() {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
-    // Click handler for welcome screen
+    // Click handler for welcome screen and help button
     const handleCanvasClick = (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
       const clickX = e.clientX - rect.left;
       const clickY = e.clientY - rect.top;
 
-      // Check if we're on the welcome screen
-      if (!hasStartedRef.current) {
-        // Check if click is on start button
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
-        const buttonWidth = 300;
-        const buttonHeight = 60;
-        const buttonX = centerX - buttonWidth / 2;
-        const buttonY = centerY + 200;
+      // Check if click is on help button (only when game is running)
+      if (hasStarted && !isGameOver && !isPaused) {
+        const helpButtonSize = 50;
+        const helpButtonX = canvas.width - helpButtonSize - 10;
+        const helpButtonY = canvas.height - helpButtonSize - 70;
+        const adjustedY = canvas.width < 768 ? canvas.height - helpButtonSize - 230 : helpButtonY;
+        
+        const helpButtonCenterX = helpButtonX + helpButtonSize / 2;
+        const helpButtonCenterY = adjustedY + helpButtonSize / 2;
+        const distanceToHelpButton = Math.sqrt(
+          Math.pow(clickX - helpButtonCenterX, 2) + Math.pow(clickY - helpButtonCenterY, 2)
+        );
 
-        if (
-          clickX >= buttonX &&
-          clickX <= buttonX + buttonWidth &&
-          clickY >= buttonY &&
-          clickY <= buttonY + buttonHeight
-        ) {
-          hasStartedRef.current = true;
+        if (distanceToHelpButton <= helpButtonSize / 2) {
+          setShowHelp(prev => !prev);
         }
-        return;
-      }
-
-      // Check if click is on help button
-      const helpButtonSize = 50;
-      const helpButtonX = canvas.width - helpButtonSize - 10;
-      const helpButtonY = canvas.height - helpButtonSize - 70; // Moved up to make room for toggle button
-      const adjustedY = canvas.width < 768 ? canvas.height - helpButtonSize - 230 : helpButtonY;
-      
-      const helpButtonCenterX = helpButtonX + helpButtonSize / 2;
-      const helpButtonCenterY = adjustedY + helpButtonSize / 2;
-      const distanceToHelpButton = Math.sqrt(
-        Math.pow(clickX - helpButtonCenterX, 2) + Math.pow(clickY - helpButtonCenterY, 2)
-      );
-
-      if (distanceToHelpButton <= helpButtonSize / 2) {
-        showHelpRef.current = !showHelpRef.current;
       }
     };
 
@@ -686,254 +713,6 @@ export function RocketShip() {
       });
     };
 
-    // Draw game over screen
-    const drawGameOver = () => {
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
-
-      // Semi-transparent overlay
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Game Over title
-      ctx.fillStyle = '#ef4444';
-      ctx.font = 'bold 72px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('GAME OVER', centerX, centerY - 120);
-
-      // Final score
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 36px Arial';
-      ctx.fillText(`Final Score: ${scoreRef.current}`, centerX, centerY - 40);
-
-      // High score
-      ctx.fillStyle = '#10b981';
-      ctx.font = 'bold 24px Arial';
-      ctx.fillText(`High Score: ${highScoreRef.current}`, centerX, centerY);
-
-      // Educational message
-      ctx.fillStyle = '#94a3b8';
-      ctx.font = '20px Arial';
-      const message1 = 'Balancing features and bugs is the key to success.';
-      const message2 = 'Build infrastructure to automate bug prevention!';
-      ctx.fillText(message1, centerX, centerY + 50);
-      ctx.fillText(message2, centerX, centerY + 80);
-
-      // Restart instruction
-      ctx.fillStyle = '#10b981';
-      ctx.font = 'bold 24px Arial';
-      ctx.fillText('Press R to restart', centerX, centerY + 130);
-    };
-
-    // Draw pause menu
-    const drawPauseMenu = () => {
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
-
-      // Semi-transparent overlay
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Pause title
-      ctx.fillStyle = '#3b82f6';
-      ctx.font = 'bold 64px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('PAUSED', centerX, centerY - 80);
-
-      // Instructions
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '24px Arial';
-      ctx.fillText('Press ESC to continue', centerX, centerY + 20);
-
-      // Restart instruction
-      ctx.fillStyle = '#94a3b8';
-      ctx.font = '20px Arial';
-      ctx.fillText('Press R to restart', centerX, centerY + 60);
-    };
-
-    // Draw welcome screen
-    const drawWelcomeScreen = () => {
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
-
-      // Background overlay - darker for better contrast
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Game title - using app's primary purple color
-      ctx.fillStyle = '#a855f7'; // Purple-500
-      ctx.font = 'bold 56px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('SPACE DEV', centerX, centerY - 220);
-
-      // Subtitle - using app's green accent
-      ctx.fillStyle = '#10b981'; // Green-500
-      ctx.font = 'bold 28px Arial';
-      ctx.fillText('Build Infrastructure, Not Just Bugs', centerX, centerY - 170);
-
-      // Metaphor explanation box - using purple theme
-      const boxWidth = Math.min(700, canvas.width - 40);
-      const boxHeight = 180;
-      const boxX = centerX - boxWidth / 2;
-      const boxY = centerY - 120;
-
-      ctx.fillStyle = 'rgba(168, 85, 247, 0.1)'; // Purple with transparency
-      ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
-      ctx.strokeStyle = '#a855f7'; // Purple border
-      ctx.lineWidth = 2;
-      ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
-
-      // Metaphor text - lighter gray for better readability
-      ctx.fillStyle = '#e5e7eb'; // Gray-200
-      ctx.font = '17px Arial';
-      ctx.textAlign = 'center';
-      
-      const metaphorLines = [
-        '🪨 Asteroids = Resources for building features',
-        '🐛 Bugs = Problems that attack your project',
-        '🛰️ Satellites = Automation tools that fight bugs',
-        '🏗️ Space Stations = Infrastructure that prevents bugs',
-        '',
-        'Collect asteroids to deploy defensive structures!',
-        'Build infrastructure to automate bug prevention.',
-      ];
-
-      let lineY = boxY + 25;
-      metaphorLines.forEach((line) => {
-        ctx.fillText(line, centerX, lineY);
-        lineY += 24;
-      });
-
-      // Controls section - using yellow accent
-      const controlsY = centerY + 80;
-      ctx.fillStyle = '#fbbf24'; // Yellow-400
-      ctx.font = 'bold 22px Arial';
-      ctx.fillText('CONTROLS', centerX, controlsY);
-
-      // Desktop controls - lighter text
-      ctx.fillStyle = '#d1d5db'; // Gray-300
-      ctx.font = '17px Arial';
-      ctx.fillText('← → or A D: Move', centerX - 150, controlsY + 40);
-      ctx.fillText('Space: Shoot', centerX - 150, controlsY + 70);
-      ctx.fillText('ESC: Pause', centerX + 150, controlsY + 40);
-      ctx.fillText('R: Restart', centerX + 150, controlsY + 70);
-
-      // Mobile note
-      if (canvas.width < 768) {
-        ctx.fillStyle = '#9ca3af'; // Gray-400
-        ctx.font = '15px Arial';
-        ctx.fillText('Touch controls available at bottom', centerX, controlsY + 100);
-      }
-
-      // Start button - using app's primary purple
-      const buttonWidth = 300;
-      const buttonHeight = 60;
-      const buttonX = centerX - buttonWidth / 2;
-      const buttonY = centerY + 200;
-
-      // Button background with glow
-      ctx.shadowBlur = 20;
-      ctx.shadowColor = '#a855f7'; // Purple glow
-      ctx.fillStyle = '#a855f7'; // Purple-500
-      ctx.fillRect(buttonX, buttonY, buttonWidth, buttonHeight);
-      ctx.shadowBlur = 0;
-
-      // Button border - darker purple
-      ctx.strokeStyle = '#9333ea'; // Purple-600
-      ctx.lineWidth = 3;
-      ctx.strokeRect(buttonX, buttonY, buttonWidth, buttonHeight);
-
-      // Button text
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 26px Arial';
-      ctx.fillText('START GAME', centerX, buttonY + buttonHeight / 2);
-
-      // Instruction below button
-      ctx.fillStyle = '#9ca3af'; // Gray-400
-      ctx.font = '15px Arial';
-      ctx.fillText('Click button or press SPACE to start', centerX, buttonY + buttonHeight + 30);
-    };
-
-    // Draw help overlay
-    const drawHelpOverlay = () => {
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
-
-      // Semi-transparent overlay
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Help title - using yellow accent
-      ctx.fillStyle = '#fbbf24'; // Yellow-400
-      ctx.font = 'bold 48px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('HELP', centerX, centerY - 220);
-
-      // Metaphor explanation box - using purple theme
-      const boxWidth = Math.min(700, canvas.width - 40);
-      const boxHeight = 180;
-      const boxX = centerX - boxWidth / 2;
-      const boxY = centerY - 170;
-
-      ctx.fillStyle = 'rgba(168, 85, 247, 0.1)'; // Purple with transparency
-      ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
-      ctx.strokeStyle = '#a855f7'; // Purple border
-      ctx.lineWidth = 2;
-      ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
-
-      // Metaphor text - lighter gray
-      ctx.fillStyle = '#e5e7eb'; // Gray-200
-      ctx.font = '16px Arial';
-      ctx.textAlign = 'center';
-      
-      const metaphorLines = [
-        '🪨 Asteroids = Resources for building features',
-        '🐛 Bugs = Problems that attack your project',
-        '🛰️ Satellites = Automation tools that fight bugs',
-        '🏗️ Space Stations = Infrastructure that prevents bugs',
-        '',
-        'Collect 20 asteroids to deploy a defensive structure.',
-        'Quotes appear automatically when structures deploy!',
-      ];
-
-      let lineY = boxY + 20;
-      metaphorLines.forEach((line) => {
-        ctx.fillText(line, centerX, lineY);
-        lineY += 24;
-      });
-
-      // Controls section
-      const controlsY = centerY + 30;
-      ctx.fillStyle = '#fbbf24'; // Yellow-400
-      ctx.font = 'bold 22px Arial';
-      ctx.fillText('CONTROLS', centerX, controlsY);
-
-      // Desktop controls - lighter text
-      ctx.fillStyle = '#d1d5db'; // Gray-300
-      ctx.font = '17px Arial';
-      ctx.fillText('← → or A D: Move', centerX - 150, controlsY + 40);
-      ctx.fillText('Space: Shoot', centerX - 150, controlsY + 70);
-      ctx.fillText('ESC: Pause', centerX + 150, controlsY + 40);
-      ctx.fillText('R: Restart', centerX + 150, controlsY + 70);
-      ctx.fillText('?: Toggle Help', centerX, controlsY + 100);
-
-      // Mobile note
-      if (canvas.width < 768) {
-        ctx.fillStyle = '#9ca3af'; // Gray-400
-        ctx.font = '15px Arial';
-        ctx.fillText('Touch controls available at bottom', centerX, controlsY + 130);
-      }
-
-      // Close instruction - using purple
-      ctx.fillStyle = '#a855f7'; // Purple-500
-      ctx.font = 'bold 22px Arial';
-      ctx.fillText('Press ? or ESC to close', centerX, centerY + 200);
-    };
-
     // Draw asteroid
     const drawAsteroid = (asteroid: Asteroid) => {
       if (asteroid.type === 'bug') {
@@ -989,21 +768,32 @@ export function RocketShip() {
       ctx.rotate(bug.rotation);
 
       const size = bug.radius;
+      
+      // Special bug aura (yellow glow)
+      if (bug.isSpecial) {
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#fbbf24';
+        ctx.fillStyle = 'rgba(251, 191, 36, 0.2)';
+        ctx.beginPath();
+        ctx.arc(0, 0, size * 1.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
 
-      // Bug body
-      ctx.fillStyle = '#dc2626';
+      // Bug body (darker red for special bugs)
+      ctx.fillStyle = bug.isSpecial ? '#991b1b' : '#dc2626';
       ctx.beginPath();
       ctx.ellipse(0, 0, size * 0.8, size, 0, 0, Math.PI * 2);
       ctx.fill();
 
       // Bug head
-      ctx.fillStyle = '#991b1b';
+      ctx.fillStyle = bug.isSpecial ? '#7f1d1d' : '#991b1b';
       ctx.beginPath();
       ctx.arc(0, -size * 0.7, size * 0.5, 0, Math.PI * 2);
       ctx.fill();
 
       // Antennae
-      ctx.strokeStyle = '#991b1b';
+      ctx.strokeStyle = bug.isSpecial ? '#7f1d1d' : '#991b1b';
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(-size * 0.3, -size * 1.1);
@@ -1041,6 +831,260 @@ export function RocketShip() {
       ctx.fill();
 
       ctx.restore();
+    };
+
+    // Emit dust particles from special bugs
+    const emitDust = (bug: Asteroid, now: number) => {
+      if (!bug.isSpecial || !bug.lastDustEmission) return;
+      
+      // Initialize dust counter if not set
+      if (bug.dustEmitted === undefined) {
+        bug.dustEmitted = 0;
+      }
+      
+      // Stop emitting after 6 particles (enough for one nest)
+      if (bug.dustEmitted >= 6) return;
+      
+      // Emit dust every 800ms (much slower to create concentrated area)
+      if (now - bug.lastDustEmission > 800) {
+        // Create 1 dust particle at a time
+        dustParticlesRef.current.push({
+          x: bug.x + (Math.random() - 0.5) * bug.radius * 0.5, // Smaller spread
+          y: bug.y + (Math.random() - 0.5) * bug.radius * 0.5,
+          createdAt: now,
+          opacity: 0.7 + Math.random() * 0.2,
+          size: 4 + Math.random() * 2,
+        });
+        
+        bug.lastDustEmission = now;
+        bug.dustEmitted += 1;
+      }
+    };
+
+    // Draw dust particle
+    const drawDustParticle = (particle: DustParticle, now: number) => {
+      const age = now - particle.createdAt;
+      const lifeRatio = age / 20000; // 20 seconds lifetime
+      
+      // Pulsation effect
+      const pulse = Math.sin(now / 200) * 0.1 + 0.95;
+      
+      ctx.save();
+      ctx.globalAlpha = particle.opacity * (1 - lifeRatio * 0.3);
+      ctx.fillStyle = '#78716c';
+      ctx.shadowBlur = 5;
+      ctx.shadowColor = '#fbbf24';
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, particle.size * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    };
+
+    // Update dust particles and check for nest formation
+    const updateDustParticles = (now: number) => {
+      // First, check if we should form a nest from mature particles
+      const matureParticles = dustParticlesRef.current.filter((p) => {
+        const age = now - p.createdAt;
+        return age >= 20000; // 20 seconds old
+      });
+      
+      // If we have enough mature particles close together, form ONE nest
+      if (matureParticles.length >= 6) { // Changed from 5 to 6 to match dust emission
+        // Find the largest cluster of particles
+        let bestCluster: DustParticle[] = [];
+        
+        // For each mature particle, find all particles within 100px
+        matureParticles.forEach((particle) => {
+          const cluster = matureParticles.filter((p) => {
+            const dx = p.x - particle.x;
+            const dy = p.y - particle.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            return distance <= 100;
+          });
+          
+          // Keep track of the largest cluster
+          if (cluster.length > bestCluster.length) {
+            bestCluster = cluster;
+          }
+        });
+        
+        // If the best cluster has at least 6 particles, form a nest
+        if (bestCluster.length >= 6) {
+          // Calculate center position of the cluster
+          let centerX = 0;
+          let centerY = 0;
+          bestCluster.forEach((p) => {
+            centerX += p.x;
+            centerY += p.y;
+          });
+          centerX /= bestCluster.length;
+          centerY /= bestCluster.length;
+          
+          // Create ONE nest
+          const nestId = `nest-${Date.now()}-${Math.random()}`;
+          const newNest: BugNest = {
+            id: nestId,
+            x: centerX,
+            y: centerY,
+            health: 50,
+            maxHealth: 50,
+            createdAt: now,
+            lastSpawn: now - 5000, // Set to 5 seconds ago so it spawns immediately
+            spawnInterval: 5000,
+            maxDuration: 30000,
+            radius: 30,
+          };
+          
+          bugNestsRef.current.push(newNest);
+          
+          // Notification
+          notificationsRef.current.push({
+            id: `nest-formed-${Date.now()}`,
+            message: '🪹 Nest Formed!',
+            timestamp: now,
+            duration: 3000,
+            type: 'info',
+          });
+          
+          // Remove ALL particles that formed the nest
+          dustParticlesRef.current = dustParticlesRef.current.filter(
+            (p) => !bestCluster.includes(p)
+          );
+          
+          return; // Exit early, we formed a nest
+        }
+      }
+      
+      // Remove expired particles (older than 21 seconds that didn't form a nest)
+      dustParticlesRef.current = dustParticlesRef.current.filter((particle) => {
+        const age = now - particle.createdAt;
+        return age < 21000; // Keep particles for 21 seconds to ensure nest formation
+      });
+    };
+
+    // Draw bug nest
+    const drawNest = (nest: BugNest, now: number) => {
+      const pulse = Math.sin(now / 300) * 0.05 + 1;
+      
+      ctx.save();
+      ctx.translate(nest.x, nest.y);
+      ctx.scale(pulse, pulse);
+      
+      // Nest body (irregular oval)
+      ctx.fillStyle = '#57534e';
+      ctx.strokeStyle = '#dc2626';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, nest.radius * 1.2, nest.radius, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      
+      // Red veins/details
+      ctx.strokeStyle = '#dc2626';
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < 4; i++) {
+        const angle = (i / 4) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(Math.cos(angle) * nest.radius * 0.8, Math.sin(angle) * nest.radius * 0.6);
+        ctx.stroke();
+      }
+      
+      // Center core
+      ctx.fillStyle = '#991b1b';
+      ctx.beginPath();
+      ctx.arc(0, 0, nest.radius * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.restore();
+      
+      // Health bar (only show when damaged)
+      if (nest.health < nest.maxHealth) {
+        const barWidth = nest.radius * 2;
+        const barHeight = 4;
+        const barX = nest.x - barWidth / 2;
+        const barY = nest.y - nest.radius - 10;
+        
+        // Background
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        
+        // Health
+        const healthRatio = nest.health / nest.maxHealth;
+        ctx.fillStyle = healthRatio > 0.5 ? '#10b981' : healthRatio > 0.25 ? '#fbbf24' : '#ef4444';
+        ctx.fillRect(barX, barY, barWidth * healthRatio, barHeight);
+      }
+    };
+
+    // Update nests (spawn bugs and check duration)
+    const updateNests = (now: number) => {
+      bugNestsRef.current = bugNestsRef.current.filter((nest) => {
+        const age = now - nest.createdAt;
+        const timeSinceLastSpawn = now - nest.lastSpawn;
+        
+        // Remove nest if expired
+        if (age >= nest.maxDuration) {
+          // Notification when nest expires naturally
+          notificationsRef.current.push({
+            id: `nest-expired-${Date.now()}`,
+            message: '⏱️ Nest Expired',
+            timestamp: now,
+            duration: 2000,
+            type: 'info',
+          });
+          return false;
+        }
+        
+        // Spawn bugs from nest
+        if (timeSinceLastSpawn >= nest.spawnInterval) {
+          const spawnCount = 2 + Math.floor(Math.random() * 2); // 2-3 bugs
+          
+          for (let i = 0; i < spawnCount; i++) {
+            const angle = (i / spawnCount) * Math.PI * 2 + Math.random();
+            const distance = nest.radius + 20;
+            const x = nest.x + Math.cos(angle) * distance;
+            const y = nest.y + Math.sin(angle) * distance;
+            
+            const radius = 15 + Math.random() * 10;
+            const isMobile = canvas.width < 768;
+            const speedMultiplier = isMobile ? 0.6 : 1;
+            const speed = (level.bugSpeed + Math.random()) * speedMultiplier;
+            
+            asteroidsRef.current.push({
+              x,
+              y,
+              radius,
+              speed,
+              rotation: Math.random() * Math.PI * 2,
+              rotationSpeed: (Math.random() - 0.5) * 0.05,
+              type: 'bug',
+              isSpecial: false, // Nest bugs are not special
+            });
+          }
+          
+          nest.lastSpawn = now;
+          
+          // Notification
+          notificationsRef.current.push({
+            id: `nest-spawn-${Date.now()}`,
+            message: '⚠️ Nest Spawning Bugs!',
+            timestamp: now,
+            duration: 2000,
+            type: 'info',
+          });
+        }
+        
+        return true;
+      });
+    };
+
+    // Check collision between bullet and nest
+    const checkNestCollision = (bullet: Bullet, nest: BugNest): boolean => {
+      const dx = bullet.x - nest.x;
+      const dy = bullet.y - nest.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      return distance < nest.radius + 4; // 4 is bullet radius
     };
 
     // Draw satellite (blue, circular, with antenna)
@@ -1387,6 +1431,14 @@ export function RocketShip() {
       });
     };
 
+    // Find nests within range of a defensive structure
+    const findNestsInRange = (structure: DefensiveStructure): BugNest[] => {
+      return bugNestsRef.current.filter((nest) => {
+        const distance = calculateDistance(structure.x, structure.y, nest.x, nest.y);
+        return distance <= structure.range;
+      });
+    };
+
     // Spawn asteroids
     const spawnAsteroid = () => {
       const radius = 20 + Math.random() * 20;
@@ -1421,6 +1473,12 @@ export function RocketShip() {
       const speed = (level.bugSpeed + Math.random()) * speedMultiplier;
       const rotationSpeed = (Math.random() - 0.5) * 0.05;
 
+      // Increment bug spawn count
+      bugSpawnCountRef.current += 1;
+      
+      // Every 3rd bug is special
+      const isSpecial = bugSpawnCountRef.current % 3 === 0;
+
       asteroidsRef.current.push({
         x,
         y,
@@ -1429,7 +1487,21 @@ export function RocketShip() {
         rotation: Math.random() * Math.PI * 2,
         rotationSpeed,
         type: 'bug',
+        isSpecial,
+        lastDustEmission: isSpecial ? Date.now() : undefined,
+        dustEmitted: isSpecial ? 0 : undefined,
       });
+      
+      // Notify when special bug appears
+      if (isSpecial) {
+        notificationsRef.current.push({
+          id: `special-bug-${Date.now()}`,
+          message: '⚠️ Special Bug Detected!',
+          timestamp: Date.now(),
+          duration: 2000,
+          type: 'info',
+        });
+      }
     };
 
     // Process defensive structure targeting and firing
@@ -1440,7 +1512,45 @@ export function RocketShip() {
           return;
         }
 
-        // Find bugs in range
+        // Priority 1: Target nests (more dangerous)
+        const nestsInRange = findNestsInRange(structure);
+        if (nestsInRange.length > 0) {
+          // Target the nearest nest
+          let nearestNest = nestsInRange[0];
+          let nearestDistance = calculateDistance(structure.x, structure.y, nearestNest.x, nearestNest.y);
+
+          for (let i = 1; i < nestsInRange.length; i++) {
+            const distance = calculateDistance(structure.x, structure.y, nestsInRange[i].x, nestsInRange[i].y);
+            if (distance < nearestDistance) {
+              nearestNest = nestsInRange[i];
+              nearestDistance = distance;
+            }
+          }
+
+          // Calculate direction to target
+          const dx = nearestNest.x - structure.x;
+          const dy = nearestNest.y - structure.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          const directionX = dx / distance;
+          const directionY = dy / distance;
+
+          // Fire bullet toward target
+          const bulletSpeed = structure.type === 'satellite' ? 8 : 10;
+          bulletsRef.current.push({
+            x: structure.x,
+            y: structure.y,
+            speed: bulletSpeed,
+            owner: structure.type,
+            directionX,
+            directionY,
+          });
+
+          // Update last shot time
+          structure.lastShot = now;
+          return;
+        }
+
+        // Priority 2: Target bugs if no nests in range
         const bugsInRange = findBugsInRange(structure);
         if (bugsInRange.length === 0) {
           return;
@@ -1511,16 +1621,8 @@ export function RocketShip() {
         ctx.fillRect(-screenShakeRef.current.x, -screenShakeRef.current.y, canvas.width, canvas.height);
       }
 
-      // Show welcome screen if game hasn't started
-      if (!hasStartedRef.current) {
-        drawWelcomeScreen();
-        ctx.restore();
-        animationRef.current = requestAnimationFrame(animate);
-        return;
-      }
-
-      // If game is over, stop all updates and show game over screen
-      if (isGameOverRef.current) {
+      // If game is over, paused, or help is shown, draw static game state
+      if (isGameOver || isPaused || showHelp) {
         // Draw static game state
         asteroidsRef.current.forEach((asteroid) => {
           drawAsteroid(asteroid);
@@ -1537,63 +1639,6 @@ export function RocketShip() {
         });
         drawRocket(rocket.x, rocket.y);
         drawHUD();
-        
-        // Draw game over screen on top
-        drawGameOver();
-        
-        ctx.restore();
-        animationRef.current = requestAnimationFrame(animate);
-        return;
-      }
-
-      // If game is paused, stop all updates and show pause menu
-      if (isPausedRef.current) {
-        // Draw static game state
-        asteroidsRef.current.forEach((asteroid) => {
-          drawAsteroid(asteroid);
-        });
-        bulletsRef.current.forEach((bullet) => {
-          drawBullet(bullet);
-        });
-        structuresRef.current.forEach((structure) => {
-          if (structure.type === 'satellite') {
-            drawSatellite(structure);
-          } else {
-            drawSpaceStation(structure);
-          }
-        });
-        drawRocket(rocket.x, rocket.y);
-        drawHUD();
-        
-        // Draw pause menu on top
-        drawPauseMenu();
-        
-        ctx.restore();
-        animationRef.current = requestAnimationFrame(animate);
-        return;
-      }
-
-      // If help is shown, pause game and show help overlay
-      if (showHelpRef.current) {
-        // Draw static game state
-        asteroidsRef.current.forEach((asteroid) => {
-          drawAsteroid(asteroid);
-        });
-        bulletsRef.current.forEach((bullet) => {
-          drawBullet(bullet);
-        });
-        structuresRef.current.forEach((structure) => {
-          if (structure.type === 'satellite') {
-            drawSatellite(structure);
-          } else {
-            drawSpaceStation(structure);
-          }
-        });
-        drawRocket(rocket.x, rocket.y);
-        drawHUD();
-        
-        // Draw help overlay on top
-        drawHelpOverlay();
         
         ctx.restore();
         animationRef.current = requestAnimationFrame(animate);
@@ -1663,13 +1708,22 @@ export function RocketShip() {
             
             asteroid.x += normalizedX * asteroid.speed;
             asteroid.y += normalizedY * asteroid.speed;
+            
+            // Calculate rotation angle to face the rocket (head pointing toward rocket)
+            // atan2 gives angle in radians, and we add PI/2 because bug is drawn with head at top (negative Y)
+            asteroid.rotation = Math.atan2(dy, dx) + Math.PI / 2;
+          }
+          
+          // Emit dust if special bug
+          if (asteroid.isSpecial) {
+            emitDust(asteroid, now);
           }
         } else {
           // Asteroids fall straight down
           asteroid.y += asteroid.speed;
+          // Only asteroids rotate randomly
+          asteroid.rotation += asteroid.rotationSpeed;
         }
-        
-        asteroid.rotation += asteroid.rotationSpeed;
         
         // Check collision with rocket (only for bugs)
         if (asteroid.type === 'bug' && checkRocketBugCollision(rocket, asteroid)) {
@@ -1691,7 +1745,7 @@ export function RocketShip() {
           
           // Check for game over
           if (rocket.lives <= 0) {
-            isGameOverRef.current = true;
+            setIsGameOver(true);
             
             // Update high score if current score is higher
             if (scoreRef.current > highScoreRef.current) {
@@ -1753,12 +1807,47 @@ export function RocketShip() {
               // Create brown/gray explosion particles for asteroids
               createExplosionParticles(asteroid.x, asteroid.y, '#78716c', 12);
             } else if (asteroid.type === 'bug') {
-              scoreRef.current += 25; // 25 points for bug
+              // Special bugs give more points
+              const points = asteroid.isSpecial ? 35 : 25;
+              scoreRef.current += points;
               // Create red explosion particles for bugs
               createExplosionParticles(asteroid.x, asteroid.y, '#dc2626', 15);
             }
             
             return false;
+          }
+          return true;
+        });
+        
+        if (bulletHit) return false;
+        
+        // Check collision with nests
+        bugNestsRef.current = bugNestsRef.current.filter((nest) => {
+          if (checkNestCollision(bullet, nest)) {
+            bulletHit = true;
+            nest.health -= 10; // Each bullet does 10 damage
+            
+            // Create explosion particles
+            createExplosionParticles(nest.x, nest.y, '#dc2626', 8);
+            
+            // Check if nest is destroyed
+            if (nest.health <= 0) {
+              scoreRef.current += 100; // 100 points for destroying nest
+              createExplosionParticles(nest.x, nest.y, '#991b1b', 20);
+              
+              // Notification
+              notificationsRef.current.push({
+                id: `nest-destroyed-${Date.now()}`,
+                message: '💥 Nest Destroyed! +100',
+                timestamp: Date.now(),
+                duration: 2000,
+                type: 'info',
+              });
+              
+              return false; // Remove nest
+            }
+            
+            return true; // Keep damaged nest
           }
           return true;
         });
@@ -1775,8 +1864,13 @@ export function RocketShip() {
       });
 
       // Check for deploy threshold (every 20 resources)
-      // Use exact equality to prevent multiple deploys
-      if (resources.collected === resources.nextDeployAt && now - lastResourceCheckRef.current > 500) {
+      // Prevent multiple deploys by tracking the total collected count
+      if (
+        resources.collected >= resources.nextDeployAt && 
+        resources.totalCollected !== lastDeployedAtRef.current &&
+        now - lastResourceCheckRef.current > 500
+      ) {
+        lastDeployedAtRef.current = resources.totalCollected;
         deployStructure(canvas.width, canvas.height);
         lastResourceCheckRef.current = now;
       }
@@ -1801,6 +1895,22 @@ export function RocketShip() {
           level: level.current,
         };
       }
+
+      // Update dust particles and check for nest formation
+      updateDustParticles(now);
+      
+      // Update nests (spawn bugs and check duration)
+      updateNests(now);
+      
+      // Draw dust particles
+      dustParticlesRef.current.forEach((particle) => {
+        drawDustParticle(particle, now);
+      });
+      
+      // Draw nests
+      bugNestsRef.current.forEach((nest) => {
+        drawNest(nest, now);
+      });
 
       // Draw defensive structures
       structuresRef.current.forEach((structure) => {
@@ -1848,21 +1958,12 @@ export function RocketShip() {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [resources.collected, resources.nextDeployAt, resources.totalCollected, collectResource, deployStructure, level.current, level.asteroidSpawnRate, level.bugSpawnRate, level.bugSpeed, checkLevelUp, resetGame, isGameVisible]);
+  }, [resources.collected, resources.nextDeployAt, resources.totalCollected, collectResource, deployStructure, level.current, level.asteroidSpawnRate, level.bugSpawnRate, level.bugSpeed, checkLevelUp, resetGame, isGameVisible, hasStarted, showHelp, isPaused, isGameOver]);
 
-  // Listen for play button click from the page
+  // Listen for play button click from the page (homepage only)
   useEffect(() => {
     const handlePlayClick = () => {
       setIsGameVisible(true);
-      
-      // Close sidebar if open
-      const sidebarTrigger = document.querySelector('[data-sidebar="sidebar"]');
-      if (sidebarTrigger) {
-        const closeButton = document.querySelector('[data-sidebar-close]');
-        if (closeButton instanceof HTMLElement) {
-          closeButton.click();
-        }
-      }
     };
 
     const playButton = document.getElementById('play-game-button');
@@ -1880,7 +1981,7 @@ export function RocketShip() {
   // ESC key to exit game
   useEffect(() => {
     const handleEscKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isGameVisible && !hasStartedRef.current) {
+      if (e.key === 'Escape' && isGameVisible && !hasStarted) {
         e.preventDefault();
         setIsGameVisible(false);
       }
@@ -1888,7 +1989,7 @@ export function RocketShip() {
 
     window.addEventListener('keydown', handleEscKey);
     return () => window.removeEventListener('keydown', handleEscKey);
-  }, [isGameVisible]);
+  }, [isGameVisible, hasStarted]);
 
   return (
     <>
@@ -1897,7 +1998,7 @@ export function RocketShip() {
         <button
           onClick={() => {
             setIsGameVisible(false);
-            hasStartedRef.current = false;
+            resetGame();
           }}
           className="fixed right-4 top-4 z-[200] flex size-14 items-center justify-center rounded-full border-2 border-red-500 bg-red-500/30 text-2xl backdrop-blur-sm transition-all hover:scale-110 hover:bg-red-500/50 active:scale-95"
           aria-label="Exit game and return to site"
@@ -1987,14 +2088,28 @@ export function RocketShip() {
         </div>
       )}
 
-      {/* Controls hint - only show when game is active and on desktop */}
-      {isGameVisible && (
-        <div className="pointer-events-none fixed bottom-4 left-4 z-[150] hidden rounded-lg bg-black/50 p-3 text-sm text-white backdrop-blur-sm md:block">
-          <p>← → or A D: Move</p>
-          <p>Space: Shoot</p>
-          <p>ESC: Pause</p>
-          <p>R: Restart</p>
-        </div>
+      {/* Game Screens - React Components */}
+      {isGameVisible && !hasStarted && (
+        <GameWelcomeScreen onStart={() => setHasStarted(true)} />
+      )}
+      
+      {isGameVisible && hasStarted && showHelp && (
+        <GameHelpScreen onClose={() => setShowHelp(false)} />
+      )}
+      
+      {isGameVisible && hasStarted && isPaused && !isGameOver && (
+        <GamePauseScreen 
+          onResume={() => setIsPaused(false)} 
+          onRestart={resetGame}
+        />
+      )}
+      
+      {isGameVisible && isGameOver && (
+        <GameOverScreen 
+          score={scoreRef.current}
+          highScore={highScoreRef.current}
+          onRestart={resetGame}
+        />
       )}
     </>
   );

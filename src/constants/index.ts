@@ -1,11 +1,10 @@
 import { Icons } from "@/components/icons";
 import { siteConfig } from "@/config/site";
-import { Book, User, Package, Gamepad2 } from "lucide-react";
+import { Book, User, Package } from "lucide-react";
 
 export const NAV_LIST = [
   { label: "Blog", path: "/blog", icon: Book },
   { label: "Packages", path: "/packages", icon: Package },
-  { label: "Play", path: "/#play", icon: Gamepad2 },
   { label: "About", path: "/about", icon: User },
 ];
 
