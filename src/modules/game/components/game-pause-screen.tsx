@@ -16,21 +16,21 @@ export function GamePauseScreen({ onResume, onRestart, onViewStats }: GamePauseS
   };
 
   return (
-    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/75 backdrop-blur-sm">
-      <div className="flex flex-col items-center gap-8">
-        <h1 className="text-7xl font-bold text-blue-500">PAUSED</h1>
+    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
+      <div className="flex w-full max-w-md flex-col items-center gap-6 md:gap-8">
+        <h1 className="text-5xl font-bold text-blue-500 md:text-7xl">PAUSED</h1>
         
-        <div className="flex flex-col items-center gap-4">
+        <div className="flex w-full flex-col items-center gap-3 md:gap-4">
           <button
             onClick={onResume}
-            className="rounded-lg bg-blue-500 px-12 py-4 text-xl font-bold text-white transition-all hover:scale-105 hover:bg-blue-600 active:scale-95"
+            className="w-full rounded-lg bg-blue-500 px-8 py-3 text-lg font-bold text-white transition-all hover:scale-105 hover:bg-blue-600 active:scale-95 md:px-12 md:py-4 md:text-xl"
           >
             Resume Game
           </button>
           
           <button
             onClick={onRestart}
-            className="rounded-lg bg-slate-700 px-12 py-4 text-xl font-bold text-white transition-all hover:scale-105 hover:bg-slate-600 active:scale-95"
+            className="w-full rounded-lg bg-slate-700 px-8 py-3 text-lg font-bold text-white transition-all hover:scale-105 hover:bg-slate-600 active:scale-95 md:px-12 md:py-4 md:text-xl"
           >
             Restart Game
           </button>
@@ -38,7 +38,7 @@ export function GamePauseScreen({ onResume, onRestart, onViewStats }: GamePauseS
           {onViewStats && (
             <button
               onClick={onViewStats}
-              className="rounded-lg bg-primary px-12 py-4 text-xl font-bold text-white transition-all hover:scale-105 hover:bg-primary/80 active:scale-95"
+              className="w-full rounded-lg bg-primary px-8 py-3 text-lg font-bold text-white transition-all hover:scale-105 hover:bg-primary/80 active:scale-95 md:px-12 md:py-4 md:text-xl"
             >
               📊 View Stats
             </button>
@@ -46,13 +46,13 @@ export function GamePauseScreen({ onResume, onRestart, onViewStats }: GamePauseS
 
           <button
             onClick={handleExitToHome}
-            className="rounded-lg bg-red-600 px-12 py-4 text-xl font-bold text-white transition-all hover:scale-105 hover:bg-red-700 active:scale-95"
+            className="w-full rounded-lg bg-red-600 px-8 py-3 text-lg font-bold text-white transition-all hover:scale-105 hover:bg-red-700 active:scale-95 md:px-12 md:py-4 md:text-xl"
           >
             Exit to Home
           </button>
         </div>
 
-        <div className="mt-4 flex flex-col items-center gap-2 text-sm text-gray-400">
+        <div className="mt-2 hidden flex-col items-center gap-2 text-sm text-gray-400 md:mt-4 md:flex">
           <p>ESC - Resume</p>
           <p>R - Restart</p>
         </div>
