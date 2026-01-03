@@ -64,6 +64,7 @@ export function RocketShip() {
   const lastBugSpawnRef = useRef(0);
   const structuresRef = useRef<DefensiveStructure[]>([]);
   const lastResourceCheckRef = useRef(0);
+  const lastDeployedAtRef = useRef(0); // Track last deployed resource count
   const notificationsRef = useRef<Array<{ 
     id: string;
     message: string; 
@@ -84,6 +85,12 @@ export function RocketShip() {
   
   // Resource system hook with deploy callback
   const { resources, collectResource, deployStructure, resetResources } = useResourceSystem((structure) => {
+    console.log('📦 Deploy callback triggered!', {
+      structureType: structure.type,
+      structureId: structure.id,
+      currentStructures: structuresRef.current.length
+    });
+    
     // Add deployed structure to our ref
     structuresRef.current.push(structure);
     
@@ -98,6 +105,7 @@ export function RocketShip() {
     
     // Add notification with the quote - show for 5 seconds at the top
     const structureName = structure.type === 'satellite' ? '🛰️ Satellite' : '🏗️ Space Station';
+    console.log('📢 Adding notification:', structureName);
     notificationsRef.current.push({
       id: `deploy-${Date.now()}`,
       message: `${structureName} Deployed!\n"${structure.quote}"`,
@@ -149,6 +157,7 @@ export function RocketShip() {
     lastAsteroidSpawnRef.current = 0;
     lastBugSpawnRef.current = 0;
     lastResourceCheckRef.current = 0;
+    lastDeployedAtRef.current = 0;
     damageFlashRef.current = 0;
     screenShakeRef.current = { x: 0, y: 0, intensity: 0 };
     isGameOverRef.current = false;
@@ -767,18 +776,18 @@ export function RocketShip() {
       ctx.font = 'bold 56px Arial';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('SPACE DEV', centerX, centerY - 220);
+      ctx.fillText('SPACE DEV', centerX, centerY - 250); // Moved up from -220
 
       // Subtitle - using app's green accent
       ctx.fillStyle = '#10b981'; // Green-500
       ctx.font = 'bold 28px Arial';
-      ctx.fillText('Build Infrastructure, Not Just Bugs', centerX, centerY - 170);
+      ctx.fillText('Build Infrastructure, Not Just Bugs', centerX, centerY - 200); // Moved up from -170
 
       // Metaphor explanation box - using purple theme
       const boxWidth = Math.min(700, canvas.width - 40);
-      const boxHeight = 180;
+      const boxHeight = 200; // Increased from 180 to add more bottom padding
       const boxX = centerX - boxWidth / 2;
-      const boxY = centerY - 120;
+      const boxY = centerY - 150; // Moved up from -120
 
       ctx.fillStyle = 'rgba(168, 85, 247, 0.1)'; // Purple with transparency
       ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
@@ -801,14 +810,14 @@ export function RocketShip() {
         'Build infrastructure to automate bug prevention.',
       ];
 
-      let lineY = boxY + 25;
+      let lineY = boxY + 30; // Increased from 25 to add more top padding
       metaphorLines.forEach((line) => {
         ctx.fillText(line, centerX, lineY);
         lineY += 24;
       });
 
       // Controls section - using yellow accent
-      const controlsY = centerY + 80;
+      const controlsY = centerY + 90; // Adjusted to balance spacing
       ctx.fillStyle = '#fbbf24'; // Yellow-400
       ctx.font = 'bold 22px Arial';
       ctx.fillText('CONTROLS', centerX, controlsY);
@@ -871,13 +880,13 @@ export function RocketShip() {
       ctx.font = 'bold 48px Arial';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('HELP', centerX, centerY - 220);
+      ctx.fillText('HELP', centerX, centerY - 250); // Moved up from -220
 
       // Metaphor explanation box - using purple theme
       const boxWidth = Math.min(700, canvas.width - 40);
-      const boxHeight = 180;
+      const boxHeight = 200; // Increased from 180 to add more bottom padding
       const boxX = centerX - boxWidth / 2;
-      const boxY = centerY - 170;
+      const boxY = centerY - 200; // Moved up from -170
 
       ctx.fillStyle = 'rgba(168, 85, 247, 0.1)'; // Purple with transparency
       ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
@@ -900,14 +909,14 @@ export function RocketShip() {
         'Quotes appear automatically when structures deploy!',
       ];
 
-      let lineY = boxY + 20;
+      let lineY = boxY + 25; // Increased from 20 to add more top padding
       metaphorLines.forEach((line) => {
         ctx.fillText(line, centerX, lineY);
         lineY += 24;
       });
 
       // Controls section
-      const controlsY = centerY + 30;
+      const controlsY = centerY + 50; // Adjusted to balance spacing
       ctx.fillStyle = '#fbbf24'; // Yellow-400
       ctx.font = 'bold 22px Arial';
       ctx.fillText('CONTROLS', centerX, controlsY);
@@ -1775,8 +1784,25 @@ export function RocketShip() {
       });
 
       // Check for deploy threshold (every 20 resources)
-      // Use exact equality to prevent multiple deploys
-      if (resources.collected === resources.nextDeployAt && now - lastResourceCheckRef.current > 500) {
+      // Prevent multiple deploys by tracking the total collected count
+      console.log('Deploy check:', {
+        collected: resources.collected,
+        nextDeployAt: resources.nextDeployAt,
+        totalCollected: resources.totalCollected,
+        lastDeployed: lastDeployedAtRef.current,
+        timeSinceLastCheck: now - lastResourceCheckRef.current
+      });
+      
+      if (
+        resources.collected >= resources.nextDeployAt && 
+        resources.totalCollected !== lastDeployedAtRef.current &&
+        now - lastResourceCheckRef.current > 500
+      ) {
+        console.log('🚀 DEPLOYING STRUCTURE!', {
+          totalCollected: resources.totalCollected,
+          previousLastDeployed: lastDeployedAtRef.current
+        });
+        lastDeployedAtRef.current = resources.totalCollected;
         deployStructure(canvas.width, canvas.height);
         lastResourceCheckRef.current = now;
       }
@@ -1850,19 +1876,10 @@ export function RocketShip() {
     };
   }, [resources.collected, resources.nextDeployAt, resources.totalCollected, collectResource, deployStructure, level.current, level.asteroidSpawnRate, level.bugSpawnRate, level.bugSpeed, checkLevelUp, resetGame, isGameVisible]);
 
-  // Listen for play button click from the page
+  // Listen for play button click from the page (homepage only)
   useEffect(() => {
     const handlePlayClick = () => {
       setIsGameVisible(true);
-      
-      // Close sidebar if open
-      const sidebarTrigger = document.querySelector('[data-sidebar="sidebar"]');
-      if (sidebarTrigger) {
-        const closeButton = document.querySelector('[data-sidebar-close]');
-        if (closeButton instanceof HTMLElement) {
-          closeButton.click();
-        }
-      }
     };
 
     const playButton = document.getElementById('play-game-button');
@@ -1984,16 +2001,6 @@ export function RocketShip() {
           >
             →
           </button>
-        </div>
-      )}
-
-      {/* Controls hint - only show when game is active and on desktop */}
-      {isGameVisible && (
-        <div className="pointer-events-none fixed bottom-4 left-4 z-[150] hidden rounded-lg bg-black/50 p-3 text-sm text-white backdrop-blur-sm md:block">
-          <p>← → or A D: Move</p>
-          <p>Space: Shoot</p>
-          <p>ESC: Pause</p>
-          <p>R: Restart</p>
         </div>
       )}
     </>
