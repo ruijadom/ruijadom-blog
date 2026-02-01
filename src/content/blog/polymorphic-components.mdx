@@ -291,27 +291,15 @@ See polymorphic components in action with this interactive example:
 
 ## Real-World Example: Building a Design System
 
-Polymorphic components shine in design systems. Let's build a Box component—the foundation of many design systems:
+Polymorphic components shine in design systems. Let's build a simplified Box component:
 
 ```typescript
-import { ComponentPropsWithoutRef, ElementType, CSSProperties } from 'react'
+import { ComponentPropsWithoutRef, ElementType } from 'react'
+import { cn } from '@/lib/utils' // Utility for merging classNames
 
 interface BoxOwnProps {
   children?: React.ReactNode
-  // Spacing
-  p?: number | string  // padding
-  px?: number | string // padding horizontal
-  py?: number | string // padding vertical
-  m?: number | string  // margin
-  mx?: number | string // margin horizontal
-  my?: number | string // margin vertical
-  // Layout
-  display?: CSSProperties['display']
-  width?: CSSProperties['width']
-  height?: CSSProperties['height']
-  // Colors
-  bg?: string // background
-  color?: string
+  className?: string
 }
 
 type BoxProps<T extends ElementType> = BoxOwnProps & {
@@ -321,67 +309,41 @@ type BoxProps<T extends ElementType> = BoxOwnProps & {
 function Box<T extends ElementType = 'div'>({
   as,
   children,
-  p,
-  px,
-  py,
-  m,
-  mx,
-  my,
-  display,
-  width,
-  height,
-  bg,
-  color,
-  style,
+  className,
   ...props
 }: BoxProps<T>) {
   const Component = as || 'div'
   
-  const boxStyle: CSSProperties = {
-    padding: p,
-    paddingLeft: px,
-    paddingRight: px,
-    paddingTop: py,
-    paddingBottom: py,
-    margin: m,
-    marginLeft: mx,
-    marginRight: mx,
-    marginTop: my,
-    marginBottom: my,
-    display,
-    width,
-    height,
-    backgroundColor: bg,
-    color,
-    ...style
-  }
-  
   return (
-    <Component style={boxStyle} {...props}>
+    <Component className={className} {...props}>
       {children}
     </Component>
   )
 }
 
 // Build other components on top of Box
-function Card<T extends ElementType = 'div'>(props: BoxProps<T>) {
+function Card<T extends ElementType = 'div'>({
+  className,
+  ...props
+}: BoxProps<T>) {
   return (
     <Box
-      bg="white"
-      p="1rem"
-      style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
+      className={cn(
+        'rounded-lg border bg-card text-card-foreground shadow-sm',
+        className
+      )}
       {...props}
     />
   )
 }
 
-function Container<T extends ElementType = 'div'>(props: BoxProps<T>) {
+function Container<T extends ElementType = 'div'>({
+  className,
+  ...props
+}: BoxProps<T>) {
   return (
     <Box
-      mx="auto"
-      px="1rem"
-      width="100%"
-      style={{ maxWidth: '1200px' }}
+      className={cn('mx-auto w-full max-w-7xl px-4', className)}
       {...props}
     />
   )
@@ -391,13 +353,13 @@ function Container<T extends ElementType = 'div'>(props: BoxProps<T>) {
 function Layout() {
   return (
     <Container as="main">
-      <Box as="header" py="2rem" bg="#f0f0f0">
-        <Box as="h1" m={0}>Welcome</Box>
+      <Box as="header" className="bg-muted py-8">
+        <Box as="h1" className="text-4xl font-bold">Welcome</Box>
       </Box>
       
-      <Card as="article">
-        <Box as="h2">Article Title</Box>
-        <Box as="p" color="#666">
+      <Card as="article" className="p-6">
+        <Box as="h2" className="text-2xl font-semibold">Article Title</Box>
+        <Box as="p" className="text-muted-foreground">
           Article content here...
         </Box>
       </Card>
@@ -585,10 +547,6 @@ While polymorphic components are type-safe, complex polymorphic types can become
 
 If users frequently misuse the `as` prop or choose inappropriate elements, it might be better to create separate components with clear purposes.
 
-**Performance is critical**
-
-The type gymnastics add slight overhead at build time, and runtime element selection can be marginally slower. For 99% of cases this doesn't matter, but for highly optimized code, direct elements might be preferable.
-
 </Callout>
 
 ## Common Pitfalls and Solutions
@@ -703,7 +661,7 @@ function Button<T extends ElementType = 'button'>({
 
 ## Testing Polymorphic Components
 
-Testing polymorphic components is straightforward—test each variant:
+Testing polymorphic components is straightforward
 
 ```typescript
 import { render, screen } from '@testing-library/react'
@@ -758,5 +716,5 @@ I recommend starting with simple polymorphic components like `Text` and `Box`, t
 
 **Resources:**
 - [React TypeScript Cheatsheet - Polymorphic Components](https://react-typescript-cheatsheet.netlify.app/docs/advanced/patterns_by_usecase/#polymorphic-components)
+- [Building Strongly Typed Polymorphic Components with React and TypeScript](https://www.freecodecamp.org/news/build-strongly-typed-polymorphic-components-with-react-and-typescript/)
 - [Building a Polymorphic Component in React](https://blog.logrocket.com/build-strongly-typed-polymorphic-components-react-typescript/)
-- [Chakra UI - Polymorphic Components](https://chakra-ui.com/docs/components/polymorphic)
