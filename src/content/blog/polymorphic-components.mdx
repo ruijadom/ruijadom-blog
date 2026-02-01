@@ -1,17 +1,40 @@
 ---
 title: "Polymorphic Components in React with TypeScript"
 description: "Master the art of polymorphic components in React—an advanced pattern that enables building highly flexible, type-safe component APIs that adapt to any HTML element or React component."
-date: "2025-12-28"
+date: "2026-02-01"
 author: "ruijadom"
 ---
 
 Have you ever built a Button component only to realize you need it to sometimes render as a link? Or created a Text component that needs to be a `<p>`, `<span>`, `<h1>`, or any other element depending on context? Welcome to the world of polymorphic components. One of the most powerful advanced patterns in React.
 
-In this post, we'll explore how to build truly flexible components that can morph into different elements while maintaining full TypeScript type safety and excellent developer experience.
+In this post, I'll explore how to build truly flexible components that can morph into different elements while maintaining full TypeScript type safety and excellent developer experience.
+
+## Why This Pattern Matters
+
+This advanced pattern is crucial for modern design systems and has significant benefits on both sides:
+
+**For Design System Developers:**
+- **Consistency at Scale**: Ensure all components follow the same API patterns, making the system predictable and easier to maintain
+- **Reduced Component Bloat**: Instead of creating `Button`, `ButtonLink`, `ButtonDiv`, and countless variants, you maintain one intelligent component
+- **Future-Proof Architecture**: New use cases don't require new components. The existing ones adapt
+- **Type Safety Guarantee**: TypeScript ensures consumers can't misuse props, catching errors at compile time rather than runtime
+
+**For Application Developers (Consumers):**
+- **Flexibility Without Compromise**: Use the right HTML element for accessibility and SEO while maintaining design consistency. No need to clone components just to change the underlying tag
+- **Native Attributes Available**: Access all native HTML attributes (like `href`, `target`, `disabled`) and ARIA attributes (like `aria-label`, `aria-expanded`) without the design system having to explicitly expose them
+- **Smaller Bundle Size**: Fewer component variants mean less code to ship to users
+- **Better Developer Experience**: One component API to learn instead of many similar ones
+- **Semantic HTML Made Easy**: Write accessible markup without sacrificing your design system's visual language or having to copy-paste styles
+
+<Callout type="success">
+
+In enterprise environments, where design systems serve dozens of teams and applications, this pattern becomes essential. It reduces friction between design system maintainers and consumers, allowing both to move faster without sacrificing quality.
+
+</Callout>
 
 ## What Are Polymorphic Components?
 
-Polymorphic components (also called "as" components or polymorphic props) are React components that can render as different HTML elements or even other React components, determined by a prop—typically called `as`.
+Polymorphic components (also called "as" components or polymorphic props) are React components that can render as different HTML elements or even other React components, determined by a prop typically called `as`.
 
 ### The Problem They Solve
 
@@ -261,33 +284,22 @@ See polymorphic components in action with this interactive example:
   options={{
     fontsize: 12,
     hidenavigation: false,
-    expanddevtools: true
+    expanddevtools: true,
+    editorsize: 50
   }}
 />
 
 ## Real-World Example: Building a Design System
 
-Polymorphic components shine in design systems. Let's build a Box component—the foundation of many design systems:
+Polymorphic components shine in design systems. Let's build a simplified Box component:
 
 ```typescript
-import { ComponentPropsWithoutRef, ElementType, CSSProperties } from 'react'
+import { ComponentPropsWithoutRef, ElementType } from 'react'
+import { cn } from '@/lib/utils' // Utility for merging classNames
 
 interface BoxOwnProps {
   children?: React.ReactNode
-  // Spacing
-  p?: number | string  // padding
-  px?: number | string // padding horizontal
-  py?: number | string // padding vertical
-  m?: number | string  // margin
-  mx?: number | string // margin horizontal
-  my?: number | string // margin vertical
-  // Layout
-  display?: CSSProperties['display']
-  width?: CSSProperties['width']
-  height?: CSSProperties['height']
-  // Colors
-  bg?: string // background
-  color?: string
+  className?: string
 }
 
 type BoxProps<T extends ElementType> = BoxOwnProps & {
@@ -297,67 +309,41 @@ type BoxProps<T extends ElementType> = BoxOwnProps & {
 function Box<T extends ElementType = 'div'>({
   as,
   children,
-  p,
-  px,
-  py,
-  m,
-  mx,
-  my,
-  display,
-  width,
-  height,
-  bg,
-  color,
-  style,
+  className,
   ...props
 }: BoxProps<T>) {
   const Component = as || 'div'
   
-  const boxStyle: CSSProperties = {
-    padding: p,
-    paddingLeft: px,
-    paddingRight: px,
-    paddingTop: py,
-    paddingBottom: py,
-    margin: m,
-    marginLeft: mx,
-    marginRight: mx,
-    marginTop: my,
-    marginBottom: my,
-    display,
-    width,
-    height,
-    backgroundColor: bg,
-    color,
-    ...style
-  }
-  
   return (
-    <Component style={boxStyle} {...props}>
+    <Component className={className} {...props}>
       {children}
     </Component>
   )
 }
 
 // Build other components on top of Box
-function Card<T extends ElementType = 'div'>(props: BoxProps<T>) {
+function Card<T extends ElementType = 'div'>({
+  className,
+  ...props
+}: BoxProps<T>) {
   return (
     <Box
-      bg="white"
-      p="1rem"
-      style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
+      className={cn(
+        'rounded-lg border bg-card text-card-foreground shadow-sm',
+        className
+      )}
       {...props}
     />
   )
 }
 
-function Container<T extends ElementType = 'div'>(props: BoxProps<T>) {
+function Container<T extends ElementType = 'div'>({
+  className,
+  ...props
+}: BoxProps<T>) {
   return (
     <Box
-      mx="auto"
-      px="1rem"
-      width="100%"
-      style={{ maxWidth: '1200px' }}
+      className={cn('mx-auto w-full max-w-7xl px-4', className)}
       {...props}
     />
   )
@@ -367,13 +353,13 @@ function Container<T extends ElementType = 'div'>(props: BoxProps<T>) {
 function Layout() {
   return (
     <Container as="main">
-      <Box as="header" py="2rem" bg="#f0f0f0">
-        <Box as="h1" m={0}>Welcome</Box>
+      <Box as="header" className="bg-muted py-8">
+        <Box as="h1" className="text-4xl font-bold">Welcome</Box>
       </Box>
       
-      <Card as="article">
-        <Box as="h2">Article Title</Box>
-        <Box as="p" color="#666">
+      <Card as="article" className="p-6">
+        <Box as="h2" className="text-2xl font-semibold">Article Title</Box>
+        <Box as="p" className="text-muted-foreground">
           Article content here...
         </Box>
       </Card>
@@ -561,10 +547,6 @@ While polymorphic components are type-safe, complex polymorphic types can become
 
 If users frequently misuse the `as` prop or choose inappropriate elements, it might be better to create separate components with clear purposes.
 
-**Performance is critical**
-
-The type gymnastics add slight overhead at build time, and runtime element selection can be marginally slower. For 99% of cases this doesn't matter, but for highly optimized code, direct elements might be preferable.
-
 </Callout>
 
 ## Common Pitfalls and Solutions
@@ -679,7 +661,7 @@ function Button<T extends ElementType = 'button'>({
 
 ## Testing Polymorphic Components
 
-Testing polymorphic components is straightforward—test each variant:
+Testing polymorphic components is straightforward
 
 ```typescript
 import { render, screen } from '@testing-library/react'
@@ -719,7 +701,7 @@ describe('Button', () => {
 
 Polymorphic components are a powerful pattern for building flexible, reusable React components with excellent TypeScript support. They're essential for design systems and component libraries, enabling you to write less code while providing more functionality.
 
-The key takeaways:
+Here are my key takeaways:
 
 - **Use `as` prop** to allow element type customization
 - **Leverage TypeScript** for full type safety with `ComponentPropsWithoutRef`
@@ -728,11 +710,11 @@ The key takeaways:
 - **Document expected usage** to prevent misuse
 - **Don't overuse** — simple components don't need polymorphism
 
-Start with simple polymorphic components like `Text` and `Box`, then gradually adopt the pattern for more complex components as you see the benefits. Your component consumers will thank you for the flexibility, and TypeScript will keep everything safe.
+I recommend starting with simple polymorphic components like `Text` and `Box`, then gradually adopting the pattern for more complex components as you see the benefits. Your component consumers will thank you for the flexibility, and TypeScript will keep everything safe.
 
 ---
 
 **Resources:**
 - [React TypeScript Cheatsheet - Polymorphic Components](https://react-typescript-cheatsheet.netlify.app/docs/advanced/patterns_by_usecase/#polymorphic-components)
+- [Building Strongly Typed Polymorphic Components with React and TypeScript](https://www.freecodecamp.org/news/build-strongly-typed-polymorphic-components-with-react-and-typescript/)
 - [Building a Polymorphic Component in React](https://blog.logrocket.com/build-strongly-typed-polymorphic-components-react-typescript/)
-- [Chakra UI - Polymorphic Components](https://chakra-ui.com/docs/components/polymorphic)
