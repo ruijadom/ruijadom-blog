@@ -7,11 +7,34 @@ author: "ruijadom"
 
 Have you ever built a Button component only to realize you need it to sometimes render as a link? Or created a Text component that needs to be a `<p>`, `<span>`, `<h1>`, or any other element depending on context? Welcome to the world of polymorphic components. One of the most powerful advanced patterns in React.
 
-In this post, we'll explore how to build truly flexible components that can morph into different elements while maintaining full TypeScript type safety and excellent developer experience.
+In this post, I'll explore how to build truly flexible components that can morph into different elements while maintaining full TypeScript type safety and excellent developer experience.
+
+## Why This Pattern Matters
+
+This advanced pattern is crucial for modern design systems and has significant benefits on both sides:
+
+**For Design System Developers:**
+- **Consistency at Scale**: Ensure all components follow the same API patterns, making the system predictable and easier to maintain
+- **Reduced Component Bloat**: Instead of creating `Button`, `ButtonLink`, `ButtonDiv`, and countless variants, you maintain one intelligent component
+- **Future-Proof Architecture**: New use cases don't require new components. The existing ones adapt
+- **Type Safety Guarantee**: TypeScript ensures consumers can't misuse props, catching errors at compile time rather than runtime
+
+**For Application Developers (Consumers):**
+- **Flexibility Without Compromise**: Use the right HTML element for accessibility and SEO while maintaining design consistency. No need to clone components just to change the underlying tag
+- **Native Attributes Available**: Access all native HTML attributes (like `href`, `target`, `disabled`) and ARIA attributes (like `aria-label`, `aria-expanded`) without the design system having to explicitly expose them
+- **Smaller Bundle Size**: Fewer component variants mean less code to ship to users
+- **Better Developer Experience**: One component API to learn instead of many similar ones
+- **Semantic HTML Made Easy**: Write accessible markup without sacrificing your design system's visual language or having to copy-paste styles
+
+<Callout type="success">
+
+In enterprise environments, where design systems serve dozens of teams and applications, this pattern becomes essential. It reduces friction between design system maintainers and consumers, allowing both to move faster without sacrificing quality.
+
+</Callout>
 
 ## What Are Polymorphic Components?
 
-Polymorphic components (also called "as" components or polymorphic props) are React components that can render as different HTML elements or even other React components, determined by a prop—typically called `as`.
+Polymorphic components (also called "as" components or polymorphic props) are React components that can render as different HTML elements or even other React components, determined by a prop typically called `as`.
 
 ### The Problem They Solve
 
@@ -261,7 +284,8 @@ See polymorphic components in action with this interactive example:
   options={{
     fontsize: 12,
     hidenavigation: false,
-    expanddevtools: true
+    expanddevtools: true,
+    editorsize: 50
   }}
 />
 
@@ -719,7 +743,7 @@ describe('Button', () => {
 
 Polymorphic components are a powerful pattern for building flexible, reusable React components with excellent TypeScript support. They're essential for design systems and component libraries, enabling you to write less code while providing more functionality.
 
-The key takeaways:
+Here are my key takeaways:
 
 - **Use `as` prop** to allow element type customization
 - **Leverage TypeScript** for full type safety with `ComponentPropsWithoutRef`
@@ -728,7 +752,7 @@ The key takeaways:
 - **Document expected usage** to prevent misuse
 - **Don't overuse** — simple components don't need polymorphism
 
-Start with simple polymorphic components like `Text` and `Box`, then gradually adopt the pattern for more complex components as you see the benefits. Your component consumers will thank you for the flexibility, and TypeScript will keep everything safe.
+I recommend starting with simple polymorphic components like `Text` and `Box`, then gradually adopting the pattern for more complex components as you see the benefits. Your component consumers will thank you for the flexibility, and TypeScript will keep everything safe.
 
 ---
 
