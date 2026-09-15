@@ -1,0 +1,13 @@
+--- a/src/styles/site.module.css
++++ b/src/styles/site.module.css
+@@ -1527,6 +1527,10 @@
+   height: 28px;
+   object-fit: contain;
+   flex-shrink: 0;
++  padding: 3px;
++  background: #142631;
++  border: 1px solid #7ce5d333;
++  border-radius: 7px;
+ }
+ .footer .brandIcon {
+   width: 24px;

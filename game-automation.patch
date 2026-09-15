@@ -1,0 +1,476 @@
+diff --git a/src/modules/game/components/game-canvas.tsx b/src/modules/game/components/game-canvas.tsx
+index 870a843..17d0815 100644
+--- a/src/modules/game/components/game-canvas.tsx
++++ b/src/modules/game/components/game-canvas.tsx
+@@ -22,6 +22,7 @@ import {
+   createMission,
+   DURATION,
+   hotfix,
++  isAutoFiring,
+   Input,
+   loadMission,
+   Mission,
+@@ -40,7 +41,6 @@ const emptyInput = (): Input => ({
+   right: false,
+   fire: false,
+   target: null,
+-  auto: true,
+ });
+ const choices: {
+   id: Upgrade;
+@@ -67,7 +67,7 @@ const choices: {
+     id: "weapon",
+     title: "Developer tooling",
+     subtitle: "ACCELERATE",
+-    text: "Fix faster with a higher fire rate. A second investment unlocks a dual shot.",
++    text: "Unlock automatic firing and a faster fire rate. A second investment adds a dual shot.",
+     icon: Crosshair,
+   },
+ ];
+@@ -82,7 +82,8 @@ export function GameCanvas() {
+   const [best, setBest] = useState(0);
+   const [help, setHelp] = useState(false);
+   const [muted, setMuted] = useState(true);
+-  const [auto, setAuto] = useState(true);
++  const auto = isAutoFiring(view);
++  const automationAvailable = view.weapon > 0 || view.assisted;
+   const soundEnabled = useRef(false);
+   const audio = useRef<AudioContext | null>(null);
+   const bestRef = useRef(0);
+@@ -113,19 +114,25 @@ export function GameCanvas() {
+   const pause = useCallback(() => {
+     if (mission.current.mode !== "playing") return;
+     mission.current.mode = "paused";
+-    input.current = { ...emptyInput(), auto: input.current.auto };
++    input.current = emptyInput();
+     saveMission(mission.current);
+     sync();
+   }, [sync]);
+   const start = useCallback(() => {
+     mission.current = {
+       ...createMission(mission.current.width),
++      assisted: mission.current.assisted,
++      autoFire: mission.current.assisted,
+       mode: "playing",
+     };
+     setSaved(null);
+     setHelp(false);
+-    input.current = { ...emptyInput(), auto: input.current.auto };
++    input.current = emptyInput();
+     saveMission(mission.current);
++    mission.current.notice = mission.current.assisted
++      ? "Simplified controls · auto-fire on"
++      : "Hold Space or the Fire button to shoot · E for a hotfix";
++    mission.current.noticeTime = 6;
+     tone(660);
+     sync();
+     board.current?.focus();
+@@ -146,6 +153,7 @@ export function GameCanvas() {
+   }, [sync, tone]);
+   const choose = (choice: Upgrade) => {
+     upgrade(mission.current, choice);
++    input.current = emptyInput();
+     saveMission(mission.current);
+     tone(800);
+     sync();
+@@ -158,6 +166,7 @@ export function GameCanvas() {
+     resizeMission(mission.current, width);
+     if (mission.current.mode === "paused") mission.current.mode = "playing";
+     setSaved(null);
++    input.current = emptyInput();
+     sync();
+     board.current?.focus();
+   };
+@@ -165,7 +174,12 @@ export function GameCanvas() {
+     document.body.classList.add("game-active");
+     const overflow = document.body.style.overflow;
+     document.body.style.overflow = "hidden";
+-    setSaved(loadMission());
++    const restored = loadMission();
++    setSaved(restored);
++    if (restored) {
++      mission.current.assisted = restored.assisted;
++      setView({ ...mission.current });
++    }
+     try {
+       const value = Number(localStorage.getItem("dev-space-best-v2"));
+       bestRef.current = Number.isFinite(value) && value > 0 ? value : 0;
+@@ -322,7 +336,9 @@ export function GameCanvas() {
+     const trap = (e: KeyboardEvent) => {
+       if (e.key !== "Tab" || !root) return;
+       const items = Array.from(
+-        root.querySelectorAll<HTMLElement>("button:not(:disabled), a[href]"),
++        root.querySelectorAll<HTMLElement>(
++          "button:not(:disabled), a[href], input:not(:disabled)",
++        ),
+       );
+       const first = items[0];
+       const last = items[items.length - 1];
+@@ -466,6 +482,41 @@ export function GameCanvas() {
+                   aria-modal="true"
+                   aria-labelledby="mission-title"
+                 >
++                  {(view.mode === "welcome" || view.mode === "paused") && (
++                    <label className={styles.assist}>
++                      <input
++                        type="checkbox"
++                        checked={view.assisted}
++                        onChange={(e) => {
++                          const enabled = e.target.checked;
++                          mission.current.assisted = enabled;
++                          if (enabled) mission.current.autoFire = true;
++                          else if (!mission.current.weapon)
++                            mission.current.autoFire = false;
++                          setSaved((previous) =>
++                            previous
++                              ? {
++                                  ...previous,
++                                  assisted: enabled,
++                                  autoFire:
++                                    enabled ||
++                                    (previous.weapon > 0 && previous.autoFire),
++                                }
++                              : null,
++                          );
++                          saveMission(mission.current);
++                          sync();
++                        }}
++                      />
++                      <span>
++                        Simplified controls
++                        <small>
++                          Automatic firing from the start. Optional, especially
++                          for touch.
++                        </small>
++                      </span>
++                    </label>
++                  )}
+                   {help ? (
+                     <>
+                       <span className={styles.eyebrow}>FLIGHT MANUAL</span>
+@@ -483,7 +534,8 @@ export function GameCanvas() {
+                         <p>
+                           <b>02 · Invest</b> At each checkpoint, choose one free
+                           upgrade. Test satellites target bugs; resilience
+-                          repairs you; tooling improves your fire rate.
++                          repairs you; developer tooling unlocks automatic
++                          firing and improves your fire rate.
+                         </p>
+                         <p>
+                           <b>03 · Recover</b> Press E or Hotfix to clear active
+@@ -558,7 +610,10 @@ export function GameCanvas() {
+                         </button>
+                       </div>
+                       <div className={styles.micro}>
+-                        4 STAGES <i /> 2 MINUTES OF FLIGHT <i /> AUTO-FIRE ON
++                        4 STAGES <i /> 2 MINUTES OF FLIGHT <i />{" "}
++                        {view.assisted
++                          ? "SIMPLIFIED CONTROLS"
++                          : "START MANUAL · EARN AUTOMATION"}
+                       </div>
+                     </>
+                   ) : view.mode === "paused" ? (
+@@ -695,13 +750,22 @@ export function GameCanvas() {
+             <button
+               className={styles.auto}
+               aria-pressed={auto}
++              disabled={!automationAvailable || overlay}
++              title={
++                automationAvailable
++                  ? "Toggle automatic firing"
++                  : "Choose Developer tooling at a checkpoint to unlock auto-fire"
++              }
+               onClick={() => {
+-                input.current.auto = !auto;
+-                setAuto(!auto);
++                mission.current.autoFire = !auto;
++                saveMission(mission.current);
++                sync();
+               }}
+             >
+               <span className={auto ? styles.liveDot : styles.offDot} />
+-              Auto-fire {auto ? "on" : "off"}
++              {automationAvailable
++                ? `Auto-fire ${auto ? "on" : "off"}`
++                : "Manual fire"}
+             </button>
+             {!auto && (
+               <button
+@@ -733,6 +797,7 @@ export function GameCanvas() {
+                 }}
+               >
+                 <Crosshair size={18} />
++                <span>Fire</span>
+               </button>
+             )}
+             <button
+diff --git a/src/modules/game/mission/README.md b/src/modules/game/mission/README.md
+index 54600cd..f039d18 100644
+--- a/src/modules/game/mission/README.md
++++ b/src/modules/game/mission/README.md
+@@ -7,11 +7,12 @@ A new version of the blog's existing `/game` experience. The `GameCanvas` export
+ Survive four 30-second stages: Prototype, Integration, Hardening and Production. Shoot or collect teal feature shards; destroy bugs before they hit the ship or cross the production boundary. Bugs represent SIP timeouts, ICE failures, regressions and packet loss. These are educational metaphors, not a protocol simulation.
+ 
+ - Arrow keys / A and D: move. On touchscreens, drag in the playfield or hold an arrow button.
+-- Auto-fire starts enabled. Toggle it off for manual Space-key or Fire-button control.
++- Missions start with manual firing: hold Space or the on-screen Fire button. The first Developer tooling upgrade unlocks and enables auto-fire; you can then toggle it off.
+ - E / Hotfix: clear active bugs, with a 12-second cooldown.
+ - Escape / P: pause. Leaving the tab or window automatically pauses the mission.
+-- At each checkpoint, choose one free upgrade: automatic test satellite, resilience (+1 capacity and up to 2 restored integrity), or faster developer tooling (dual shots on the second investment).
++- At each checkpoint, choose one free upgrade: automatic test satellite, resilience (+1 capacity and up to 2 restored integrity), or developer tooling (auto-fire and faster shots on the first investment, dual shots on the second).
+ - Gold-ringed bugs have two hit points. Consecutive hits build a multiplier; surviving a stage earns 100 points per remaining integrity.
++- Optional Simplified controls in the welcome/pause screen enable firing automatically from the start, without spending an upgrade. This choice and your auto-fire toggle are saved with the mission.
+ - Win by surviving Production. Lose when integrity reaches zero.
+ 
+ ## Run the blog
+@@ -31,7 +32,7 @@ Open `/game` on the local development server.
+ - `render.ts`: high-DPI canvas graphics, ship, feature crystals, bugs, satellites, particles and background.
+ - `mission.module.css`: scoped, responsive mission-control interface.
+ - `../components/game-canvas.tsx`: React HUD, input, dialogs, optional audio and lifecycle.
+-- `engine.test.ts`: nine focused logic tests.
++- `engine.test.ts`: thirteen focused logic tests.
+ 
+ Simulation uses delta time with a capped step to avoid jumps after a stall. React receives HUD snapshots at approximately 10 Hz while canvas renders through one animation loop. ResizeObserver handles the playfield and device pixel ratio is capped at 2. Reduced-motion settings remove moving background stars, satellite bobbing, exhaust variation and particle effects; essential gameplay motion remains.
+ 
+@@ -49,7 +50,7 @@ Completed:
+ 
+ - Full-project TypeScript check (`pnpm exec tsc --noEmit`).
+ - ESLint for the new engine, renderer, tests and modified component.
+-- Nine passing tests covering refresh-rate-independent movement, pause, single-hit projectile collision, escaped bugs, hotfix cooldown, upgrades, health bounds, win/loss precedence and saved-state validation.
++- Thirteen passing tests covering refresh-rate-independent movement, pause, single-hit projectile collision, escaped bugs, hotfix cooldown, upgrades, health bounds, win/loss precedence and saved-state validation.
+ - The uploaded original `game-canvas.tsx` matches public GitHub `main` at commit `50d307082dd632a0ed4528fa94ecf5fd433eb2b3`.
+ 
+ Run the tests without adding a test framework:
+diff --git a/src/modules/game/mission/engine.test.ts b/src/modules/game/mission/engine.test.ts
+index d2286c8..47651b0 100644
+--- a/src/modules/game/mission/engine.test.ts
++++ b/src/modules/game/mission/engine.test.ts
+@@ -14,7 +14,6 @@ const idle: Input = {
+   right: false,
+   fire: false,
+   target: null,
+-  auto: false,
+ };
+ const random = () => 0.9;
+ 
+@@ -150,3 +149,61 @@ test("checkpoint persistence restores actual state and rejects corrupted saves",
+   saveMission(m);
+   assert.equal(loadMission(), null);
+ });
++
++test("new missions require manual fire and stop when the button is released", () => {
++  const m = createMission();
++  m.mode = "playing";
++  step(m, idle, 0.05, random);
++  assert.equal(m.shots.length, 0);
++  step(m, { ...idle, fire: true }, 0.05, random);
++  assert.equal(m.shots.length, 1);
++  m.shots = [];
++  m.shot = 0;
++  step(m, idle, 0.05, random);
++  assert.equal(m.shots.length, 0);
++});
++test("tooling unlocks automatic fire; other upgrades do not", () => {
++  for (const choice of ["tests", "shield", "weapon"] as const) {
++    const m = createMission();
++    m.mode = "upgrade";
++    upgrade(m, choice);
++    step(m, idle, 0.05, random);
++    assert.equal(m.shots.length, choice === "weapon" ? 1 : 0);
++    if (choice === "weapon") {
++      m.autoFire = false;
++      m.shots = [];
++      m.shot = 0;
++      step(m, idle, 0.05, random);
++      assert.equal(m.shots.length, 0);
++    }
++  }
++});
++test("simplified controls allow early automation but a locked auto flag does not", () => {
++  const m = createMission();
++  m.mode = "playing";
++  m.autoFire = true;
++  step(m, idle, 0.05, random);
++  assert.equal(m.shots.length, 0);
++  m.assisted = true;
++  step(m, idle, 0.05, random);
++  assert.equal(m.shots.length, 1);
++  saveMission(m);
++  assert.equal(loadMission()?.assisted, true);
++  assert.equal(loadMission()?.autoFire, true);
++});
++test("older saves restore earned automation without granting it to prototypes", () => {
++  for (const weapon of [0, 1]) {
++    const m = createMission();
++    m.mode = "playing";
++    m.weapon = weapon;
++    const legacy = JSON.parse(JSON.stringify(m));
++    delete legacy.autoFire;
++    delete legacy.assisted;
++    localStorage.setItem(
++      "dev-space-mission-v2",
++      JSON.stringify({ version: 2, mission: legacy }),
++    );
++    assert.equal(loadMission()?.autoFire, weapon > 0);
++    assert.equal(loadMission()?.assisted, false);
++  }
++});
+diff --git a/src/modules/game/mission/engine.ts b/src/modules/game/mission/engine.ts
+index c32f537..96e6b77 100644
+--- a/src/modules/game/mission/engine.ts
++++ b/src/modules/game/mission/engine.ts
+@@ -81,7 +81,6 @@ export type Input = {
+   right: boolean;
+   fire: boolean;
+   target: number | null;
+-  auto: boolean;
+ };
+ export type Mission = {
+   mode: Mode;
+@@ -97,6 +96,8 @@ export type Mission = {
+   bugs: number;
+   tests: number;
+   weapon: number;
++  autoFire: boolean;
++  assisted: boolean;
+   combo: number;
+   comboTime: number;
+   invulnerable: number;
+@@ -127,6 +128,8 @@ export function createMission(width = 1000): Mission {
+     bugs: 0,
+     tests: 0,
+     weapon: 0,
++    autoFire: false,
++    assisted: false,
+     combo: 0,
+     comboTime: 0,
+     invulnerable: 0,
+@@ -196,15 +199,24 @@ export function upgrade(m: Mission, choice: Upgrade) {
+     m.maxHealth++;
+     m.health = Math.min(m.maxHealth, m.health + 2);
+   }
+-  if (choice === "weapon") m.weapon++;
++  if (choice === "weapon") {
++    m.weapon++;
++    if (m.weapon === 1) m.autoFire = true;
++  }
+   m.phase++;
+   m.phaseTime = 0;
+   m.mode = "playing";
+   m.spawn = 1;
+   m.invulnerable = 1.5;
+-  m.notice = PHASES[m.phase].title;
++  m.notice =
++    choice === "weapon" && m.weapon === 1
++      ? "Automation unlocked · your tools now handle firing"
++      : PHASES[m.phase].title;
+   m.noticeTime = 3;
+ }
++export function isAutoFiring(m: Mission): boolean {
++  return m.autoFire && (m.weapon > 0 || m.assisted);
++}
+ export function step(
+   m: Mission,
+   input: Input,
+@@ -228,10 +240,10 @@ export function step(
+     m.x += Math.max(-430 * dt, Math.min(430 * dt, input.target - m.x));
+   else m.x += ((input.right ? 1 : 0) - (input.left ? 1 : 0)) * 430 * dt;
+   m.x = Math.max(26, Math.min(m.width - 26, m.x));
+-  m.shot -= dt;
+-  m.satelliteShot -= dt;
+-  m.spawn -= dt;
+-  if ((input.auto || input.fire) && m.shot <= 0) {
++  m.shot = Math.max(0, m.shot - dt);
++  m.satelliteShot = Math.max(0, m.satelliteShot - dt);
++  m.spawn = Math.max(0, m.spawn - dt);
++  if ((isAutoFiring(m) || input.fire) && m.shot <= 0) {
+     m.shot = Math.max(0.12, 0.27 - m.weapon * 0.05);
+     const offsets = m.weapon > 1 ? [-9, 9] : [0];
+     for (const dx of offsets)
+@@ -346,9 +358,19 @@ export function loadMission(): Mission | null {
+     if (data?.version !== 2 || !data.mission) return null;
+     const m = data.mission;
+     const base = createMission();
+-    for (const [key, value] of Object.entries(base))
+-      if (typeof value === "number" && (!Number.isFinite(m[key]) || m[key] < 0))
+-        return null;
++    // Older v2 saves have no control settings; preserve earned automation.
++    if (m.assisted === undefined) m.assisted = false;
++    if (m.autoFire === undefined) m.autoFire = m.weapon > 0;
++    if (typeof m.assisted !== "boolean" || typeof m.autoFire !== "boolean")
++      return null;
++    for (const [key, value] of Object.entries(base)) {
++      if (typeof value !== "number") continue;
++      if (!Number.isFinite(m[key])) return null;
++      // Legacy countdowns could become negative while waiting for player input.
++      if (["shot", "satelliteShot", "spawn"].includes(key))
++        m[key] = Math.max(0, m[key]);
++      else if (m[key] < 0) return null;
++    }
+     if (
+       !["playing", "paused", "upgrade"].includes(m.mode) ||
+       !Number.isInteger(m.phase) ||
+diff --git a/src/modules/game/mission/mission.module.css b/src/modules/game/mission/mission.module.css
+index 5a63605..a51733f 100644
+--- a/src/modules/game/mission/mission.module.css
++++ b/src/modules/game/mission/mission.module.css
+@@ -1070,3 +1070,59 @@
+     font-size: 12px;
+   }
+ }
++
++.assist {
++  display: flex;
++  align-items: flex-start;
++  gap: 10px;
++  margin-bottom: 22px;
++  padding: 12px 14px;
++  border: 1px solid #7ce5d333;
++  border-radius: 8px;
++  background: #7ce5d308;
++  color: #d8e8ed;
++  font-size: 12px;
++  cursor: pointer;
++}
++.assist input {
++  margin-top: 3px;
++  accent-color: #7ce5d3;
++  width: 16px;
++  height: 16px;
++  flex-shrink: 0;
++}
++.assist input:focus-visible {
++  outline: 2px solid #7ce5d3;
++  outline-offset: 4px;
++}
++.assist small {
++  display: block;
++  margin-top: 5px;
++  font-size: 10px;
++  line-height: 1.6;
++  color: #a6b8ce;
++}
++.fire {
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  gap: 5px;
++  padding: 0 9px;
++  font-size: 11px !important;
++}
++@media (max-width: 520px) {
++  .controls:has(.fire) .auto {
++    font-size: 8px !important;
++  }
++  .fire {
++    padding: 0 6px;
++  }
++  .fire svg {
++    display: none;
++  }
++  .assist {
++    font-size: 11px;
++    padding: 10px;
++    margin-bottom: 16px;
++  }
++}

@@ -1,0 +1,143 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 270 100% 95%;
+    --foreground: 270 5% 0%;
+    --card: 270 50% 90%;
+    --card-foreground: 270 5% 10%;
+    --popover: 270 100% 95%;
+    --popover-foreground: 270 100% 0%;
+    --primary: 270 95.2% 75.3%;
+    --primary-foreground: 0 0% 0%;
+    --secondary: 270 30% 70%;
+    --secondary-foreground: 0 0% 0%;
+    --muted: 232 30% 85%;
+    --muted-foreground: 270 5% 35%;
+    --accent: 232 30% 80%;
+    --accent-foreground: 270 5% 10%;
+    --destructive: 0 100% 30%;
+    --destructive-foreground: 270 5% 90%;
+    --border: 270 30% 50%;
+    --input: 270 30% 18%;
+    --ring: 270 95.2% 75.3%;
+    --radius: 0.5rem;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+  .dark {
+    --background: 220 45% 6.5%;
+    --foreground: 215 40% 94%;
+    --card: 218 37% 10%;
+    --card-foreground: 215 40% 94%;
+    --popover: 218 37% 10%;
+    --popover-foreground: 215 40% 94%;
+    --primary: 170 67% 69%;
+    --primary-foreground: 171 56% 8%;
+    --secondary: 218 33% 12%;
+    --secondary-foreground: 215 40% 94%;
+    --muted: 218 30% 14%;
+    --muted-foreground: 216 19% 68%;
+    --accent: 218 30% 17%;
+    --accent-foreground: 215 40% 94%;
+    --destructive: 345 70% 47%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 218 26% 21%;
+    --input: 218 26% 21%;
+    --ring: 170 67% 69%;
+    --radius: 0.75rem;
+    --sidebar-background: 218 37% 10%;
+    --sidebar-foreground: 215 40% 94%;
+    --sidebar-primary: 170 67% 69%;
+    --sidebar-primary-foreground: 171 56% 8%;
+    --sidebar-accent: 218 30% 17%;
+    --sidebar-accent-foreground: 215 40% 94%;
+    --sidebar-border: 218 26% 21%;
+    --sidebar-ring: 170 67% 69%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Mermaid Diagram Styles */
+@layer components {
+  .mermaid {
+    @apply w-full;
+    min-height: 300px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .mermaid svg {
+    max-width: 100%;
+    height: auto !important;
+    min-height: 300px;
+    display: block;
+  }
+
+  /* Increase node sizes */
+  .mermaid .node rect,
+  .mermaid .node circle,
+  .mermaid .node ellipse,
+  .mermaid .node polygon {
+    @apply stroke-2;
+  }
+
+  /* Improve text readability */
+  .mermaid text {
+    font-size: 16px !important;
+    font-family: var(--font-lexend), sans-serif !important;
+  }
+
+  /* Subgraph styling */
+  .mermaid .cluster rect {
+    @apply stroke-2;
+    rx: 8px;
+    ry: 8px;
+  }
+
+  /* Arrow styling */
+  .mermaid .edgePath .path {
+    @apply stroke-2;
+  }
+
+  /* Responsive scaling */
+  @media (max-width: 768px) {
+    .mermaid svg {
+      min-height: 250px;
+    }
+  }
+}
+
+/* Hide site elements when game is active */
+body.game-active header,
+body.game-active nav,
+body.game-active footer,
+body.game-active aside,
+body.game-active #site-hero {
+  display: none !important;
+}
+
+::selection {
+  background: #7ce5d33d;
+  color: #f1fffc;
+}
+html {
+  scroll-padding-top: 110px;
+}

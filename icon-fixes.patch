@@ -1,0 +1,80 @@
+diff --git a/src/components/app.tsx b/src/components/app.tsx
+index c51c3bb..6e60951 100644
+--- a/src/components/app.tsx
++++ b/src/components/app.tsx
+@@ -1,5 +1,6 @@
+ import { PropsWithChildren } from "react";
+ import Link from "next/link";
++import Image from "next/image";
+ import { ArrowUpRight } from "lucide-react";
+ import SiteHeader from "@/components/site-header";
+ import { siteConfig } from "@/config/site";
+@@ -18,7 +19,15 @@ export default function App({ children }: PropsWithChildren) {
+       <footer className={s.footer}>
+         <div>
+           <Link href="/" className={s.wordmark}>
+-            <span aria-hidden="true">✳</span> ruijadom
++            <Image
++              src="/icon.ico"
++              alt=""
++              width={28}
++              height={28}
++              unoptimized
++              className={s.brandIcon}
++            />{" "}
++            ruijadom
+             <span className={s.markDot}>.</span>
+           </Link>
+           <p>Thoughtful interfaces. Resilient systems.</p>
+diff --git a/src/components/site-header.tsx b/src/components/site-header.tsx
+index e4715cf..4b08142 100644
+--- a/src/components/site-header.tsx
++++ b/src/components/site-header.tsx
+@@ -1,6 +1,7 @@
+ "use client";
+ import { useEffect, useState } from "react";
+ import Link from "next/link";
++import Image from "next/image";
+ import { usePathname } from "next/navigation";
+ import { Menu, X, ArrowUpRight } from "lucide-react";
+ import { NAV_LIST } from "@/constants";
+@@ -34,7 +35,15 @@ export default function SiteHeader() {
+     >
+       <div className={s.headerInner}>
+         <Link href="/" className={s.wordmark} aria-label="Ruijadom home">
+-          <span aria-hidden="true">✳</span> ruijadom
++          <Image
++            src="/icon.ico"
++            alt=""
++            width={28}
++            height={28}
++            unoptimized
++            className={s.brandIcon}
++          />{" "}
++          ruijadom
+           <span className={s.markDot}>.</span>
+         </Link>
+         <span className={s.reading}>
+diff --git a/src/styles/site.module.css b/src/styles/site.module.css
+index 995bb7c..f1264da 100644
+--- a/src/styles/site.module.css
++++ b/src/styles/site.module.css
+@@ -1520,3 +1520,18 @@
+     padding-inline: 8px;
+   }
+ }
++
++/* Use the original brand asset and inherit the social buttons' foreground. */
++.brandIcon {
++  width: 28px;
++  height: 28px;
++  object-fit: contain;
++  flex-shrink: 0;
++}
++.footer .brandIcon {
++  width: 24px;
++  height: 24px;
++}
++.socials svg {
++  fill: currentColor;
++}
