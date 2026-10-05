@@ -13,6 +13,7 @@ import { Mdx } from "@/components/mdx-component";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
+import { Comments } from "@/components/comments";
 
 const TableOfContents = dynamic(
   () => import("@/components/toc").then((mod) => mod.TableOfContents),
@@ -113,6 +114,7 @@ export default async function BlogPageItem({ params }: BlogPageItemProps) {
           <div className={s.articleBody}>
             <Mdx code={blog.body} />
           </div>
+          <Comments />
           <hr className="mt-12" />
 
           <div className="flex justify-center py-6 lg:py-10">

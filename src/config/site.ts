@@ -8,6 +8,12 @@ export const siteConfig = {
     github: "https://github.com/ruijadom",
     linkedin: "https://www.linkedin.com/in/ruijadomingues/",
   },
+  comments: {
+    repo: "ruijadom/ruijadom-blog" as `${string}/${string}`,
+    repoId: "R_kgDONC_g5Q",
+    category: "Announcements",
+    categoryId: "DIC_kwDONC_g5c4DHHfr",
+  },
 };
 
 export type SiteConfig = typeof siteConfig;
