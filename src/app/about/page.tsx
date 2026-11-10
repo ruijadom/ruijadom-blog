@@ -43,19 +43,22 @@ export default function AboutPage() {
             <em>feel simple.</em>
           </h2>
           <p>
-            I build interfaces that help people get things done. My work
-            connects frontend architecture, design systems, and the small
-            interaction details that make a product intuitive.
+            I&apos;m a software engineer with a decade of building products
+            that grow without breaking.
           </p>
           <p>
-            Across web and mobile, I care about performance, accessibility and
-            maintainability. A good interface should work well today and give
-            the next developer a clear place to start tomorrow.
+            I work where architecture meets the interface: micro-frontends,
+            design systems shared across brands, real-time communication and,
+            lately, interfaces where people and AI agents work together.
           </p>
           <p>
-            This is my space to share what I learn, publish useful tools, and
-            experiment with ideas — sometimes in the form of a spaceship
-            fighting bugs.
+            I care about the decisions that last: code that is still easy to
+            change on day five hundred, and a clear place to start for whoever
+            comes next.
+          </p>
+          <p>
+            This is where I share what I learn, publish tools, and experiment,
+            sometimes with a spaceship fighting bugs.
           </p>
         </div>
       </div>
