@@ -13,7 +13,7 @@ This article continues [Micro-Frontends: Scaling Teams and Codebases](/blog/micr
 
 In the [previous article](/blog/micro-frontend) we split an application into pieces that different teams build and deploy on their own. It stopped at the point where most real projects start to hurt: the pieces need to talk to each other.
 
-A user starts a call in the softphone. The chat needs to open the conversation with that contact. The video app needs to know a call is active so it does not grab the microphone. The call history needs to refresh when the call ends. Four teams, four deploy pipelines, one fact: *a call started*.
+A customer places an order in the checkout. The cart needs to empty itself. The loyalty widget needs to show the points they just earned. The order history needs to refresh. Four teams, four deploy pipelines, one fact: *an order was placed*.
 
 There are several ways to share that fact, and they are often presented as a choice between "state management" and "an event bus". That framing misses the real question. Every option creates coupling. What changes is **what the teams are coupled to**, and **what happens on the day one of them deploys and the others do not**.
 
@@ -56,31 +56,31 @@ graph LR
 The first idea most teams have is to put a store in the host and expose it through Module Federation, so every micro-frontend can read and write it.
 
 ```ts
-// host/src/stores/call-store.ts (exposed as "host/callStore")
+// host/src/stores/checkout-store.ts (exposed as "host/checkoutStore")
 import { create } from 'zustand'
 
-interface CallState {
-  activeCall: { id: string; number: string } | null
-  setActiveCall: (call: CallState['activeCall']) => void
+interface CheckoutState {
+  lastOrder: { id: string; customerId: string } | null
+  setLastOrder: (order: CheckoutState['lastOrder']) => void
 }
 
-export const useCallStore = create<CallState>()((set) => ({
-  activeCall: null,
-  setActiveCall: (activeCall) => set({ activeCall }),
+export const useCheckoutStore = create<CheckoutState>()((set) => ({
+  lastOrder: null,
+  setLastOrder: (lastOrder) => set({ lastOrder }),
 }))
 ```
 
 ```tsx
-// chat/src/ChatHeader.tsx
-import { useCallStore } from 'host/callStore'
+// loyalty/src/PointsBanner.tsx
+import { useCheckoutStore } from 'host/checkoutStore'
 
-export function ChatHeader() {
-  const number = useCallStore((s) => s.activeCall?.number)
-  return number ? <ActiveCallBanner number={number} /> : null
+export function PointsBanner() {
+  const customerId = useCheckoutStore((s) => s.lastOrder?.customerId)
+  return customerId ? <PointsEarned customerId={customerId} /> : null
 }
 ```
 
-It works on day one, and it is the hardest option to change later. The shape of `activeCall` is now a public API, read inside the render functions of other teams' components. If the softphone team renames `number` to `remote.number`, the chat compiles fine (it still has the old types) and shows an empty banner in production. Every consumer is coupled to the producer's internal data model, not to a message the producer chose to publish.
+It works on day one, and it is the hardest option to change later. The shape of `lastOrder` is now a public API, read inside the render functions of other teams' components. If the checkout team renames `customerId` to `customer.id`, the loyalty widget compiles fine (it still has the old types) and shows an empty banner in production. Every consumer is coupled to the producer's internal data model, not to a message the producer chose to publish.
 
 There are also mechanical problems. The store only works if every micro-frontend gets the same instance, so `zustand` and the store module must be federation singletons. Any team can write to it, so ownership of the data is a convention, not a rule. And debugging "who set this to null?" across four repositories is not fun.
 
@@ -96,23 +96,23 @@ Host props are a good fit for **context that really is global**: the signed-in u
 
 ### 3. The URL
 
-The URL is the oldest shared state on the web, and it is underrated. If the chat should show the conversation for a contact, `/chat/conversations/123` is a contract every micro-frontend understands, survives a page reload, and can be shared as a link.
+The URL is the oldest shared state on the web, and it is underrated. If the account area should show a specific order, `/account/orders/123` is a contract every micro-frontend understands, survives a page reload, and can be shared as a link.
 
-The URL is great for **where the user is**. It is not meant for things that happen while the user stays on the same page, like a call starting in the background.
+The URL is great for **where the user is**. It is not meant for things that happen while the user stays on the same page, like an order placed from a quick-buy button.
 
 ### 4. Server State
 
-Often the data two micro-frontends "share" is really data that lives on the server. The call history, the contact list and the conversation list all have an owner already: the API.
+Often the data two micro-frontends "share" is really data that lives on the server. The order history, the product catalogue and the customer profile all have an owner already: the API.
 
 If each micro-frontend fetches what it needs with its own React Query client, they stay consistent because they read from the same source, not because they share memory. The contract between teams is the API specification, which is already versioned, documented and reviewed.
 
-The gap is freshness. When the softphone ends a call, the call history in another micro-frontend does not know it should refetch. That is a perfect job for a small message, which brings us to the last option.
+The gap is freshness. When the checkout cancels an order, the order history in another micro-frontend does not know it should refetch. That is a perfect job for a small message, which brings us to the last option.
 
 ### 5. An Event Bus
 
-With an event bus, a micro-frontend publishes a fact ("call 42 started") and anyone interested reacts to it. The producer does not know who is listening. The consumers do not know who produced it. The only thing they share is the definition of the event.
+With an event bus, a micro-frontend publishes a fact ("order 42 was placed") and anyone interested reacts to it. The producer does not know who is listening. The consumers do not know who produced it. The only thing they share is the definition of the event.
 
-That definition is the whole design. An untyped bus, where anyone can `dispatch('callStarted', anything)`, has the same problems as the shared store, with less visibility. A bus with a **versioned contract** is what makes independent deploys safe.
+That definition is the whole design. An untyped bus, where anyone can `dispatch('orderPlaced', anything)`, has the same problems as the shared store, with less visibility. A bus with a **versioned contract** is what makes independent deploys safe.
 
 ### Comparing Them
 
@@ -139,17 +139,17 @@ The rest of this guide builds the event bus. It has three parts:
 graph TB
     Contract["@acme/events-contract<br/>━━━━━━━━━<br/>schemas per version<br/>converters<br/>examples"]
 
-    Softphone["Softphone MFE<br/>(producer)"]
-    Chat["Chat MFE<br/>(consumer)"]
-    History["History MFE<br/>(consumer)"]
+    Checkout["Checkout MFE<br/>(producer)"]
+    Loyalty["Loyalty MFE<br/>(consumer)"]
+    History["Order History MFE<br/>(consumer)"]
     Bus(("Event bus<br/>one per page"))
 
-    Contract -.build time.-> Softphone
-    Contract -.build time.-> Chat
+    Contract -.build time.-> Checkout
+    Contract -.build time.-> Loyalty
     Contract -.build time.-> History
 
-    Softphone -- "call.started v2, v1" --> Bus
-    Bus -- "v2" --> Chat
+    Checkout -- "order.placed v2, v1" --> Bus
+    Bus -- "v2" --> Loyalty
     Bus -- "v1" --> History
 
     style Contract fill:#1e293b,stroke:#3b82f6,stroke-width:3px
@@ -160,12 +160,12 @@ The contract lives in its own package, not in the host and not in the producer. 
 
 ### Events Describe Facts, Not Commands
 
-Before writing any code, name the events well. An event says something **that already happened in the producer's domain**, in the past tense: `call.started`, `call.ended`, `conversation.read`.
+Before writing any code, name the events well. An event says something **that already happened in the producer's domain**, in the past tense: `order.placed`, `order.cancelled`, `cart.cleared`.
 
 Avoid two common mistakes:
 
-- **UI events**, like `callButton.clicked`. They leak the producer's interface into other teams' code. When the button moves into a menu, the event changes meaning.
-- **Commands**, like `chat.openConversation`. A command tells another domain what to do, and the producer will soon want to know whether it worked. That is a function call over a bus, with none of the guarantees of a function call. If one micro-frontend needs another to do something, expose a function, a route or an API.
+- **UI events**, like `buyButton.clicked`. They leak the producer's interface into other teams' code. When the button moves into a menu, the event changes meaning.
+- **Commands**, like `cart.clear`. A command tells another domain what to do, and the producer will soon want to know whether it worked. That is a function call over a bus, with none of the guarantees of a function call. If one micro-frontend needs another to do something, expose a function, a route or an API.
 
 ### Schemas Per Version
 
@@ -175,29 +175,29 @@ Each event has one schema per version. Zod gives us both the runtime validator a
 // packages/events-contract/src/contract.ts
 import { z } from 'zod'
 
-const CallStartedV1 = z.object({
-  callId: z.string(),
-  number: z.string(),
+const OrderPlacedV1 = z.object({
+  orderId: z.string(),
+  customerId: z.string(),
 })
 
-const CallStartedV2 = z.object({
-  callId: z.string(),
-  remote: z.object({
-    number: z.string(),
-    displayName: z.string().optional(),
+const OrderPlacedV2 = z.object({
+  orderId: z.string(),
+  customer: z.object({
+    id: z.string(),
+    tier: z.string().optional(),
   }),
-  direction: z.enum(['inbound', 'outbound']),
+  channel: z.enum(['web', 'mobile']),
 })
 
-const CallEndedV1 = z.object({
-  callId: z.string(),
-  reason: z.enum(['hangup', 'rejected', 'failed']),
-  durationMs: z.number().int().nonnegative(),
+const OrderCancelledV1 = z.object({
+  orderId: z.string(),
+  reason: z.enum(['customer', 'payment_failed', 'out_of_stock']),
+  refundCents: z.number().int().nonnegative(),
 })
 
 export const contract = {
-  'call.started': { 1: CallStartedV1, 2: CallStartedV2 },
-  'call.ended': { 1: CallEndedV1 },
+  'order.placed': { 1: OrderPlacedV1, 2: OrderPlacedV2 },
+  'order.cancelled': { 1: OrderCancelledV1 },
 } as const
 ```
 
@@ -230,7 +230,7 @@ The envelope carries what every event needs regardless of its type: a unique `id
 
 ### Converters Between Versions
 
-Version 2 of `call.started` replaced `number` with a `remote` object and added `direction`. Some consumers will still expect version 1 for weeks. Instead of asking every team to migrate on the same day, the contract package knows how to turn one version into the next and back.
+Version 2 of `order.placed` replaced `customerId` with a `customer` object and added `channel`. Some consumers will still expect version 1 for weeks. Instead of asking every team to migrate on the same day, the contract package knows how to turn one version into the next and back.
 
 ```ts
 // packages/events-contract/src/converters.ts
@@ -242,28 +242,28 @@ type ConverterTable = Partial<
 
 // upcasters[type][n] turns version n into version n + 1
 export const upcasters: ConverterTable = {
-  'call.started': {
-    1: (p: Payload<'call.started', 1>): Payload<'call.started', 2> => ({
-      callId: p.callId,
-      remote: { number: p.number },
-      // Version 1 was only ever published for inbound calls.
-      direction: 'inbound',
+  'order.placed': {
+    1: (p: Payload<'order.placed', 1>): Payload<'order.placed', 2> => ({
+      orderId: p.orderId,
+      customer: { id: p.customerId },
+      // Version 1 was only ever published by the web checkout.
+      channel: 'web',
     }),
   },
 }
 
 // downcasters[type][n] turns version n into version n - 1
 export const downcasters: ConverterTable = {
-  'call.started': {
-    2: (p: Payload<'call.started', 2>): Payload<'call.started', 1> => ({
-      callId: p.callId,
-      number: p.remote.number,
+  'order.placed': {
+    2: (p: Payload<'order.placed', 2>): Payload<'order.placed', 1> => ({
+      orderId: p.orderId,
+      customerId: p.customer.id,
     }),
   },
 }
 ```
 
-Writing the converters is a good test of the change itself. Look at the upcaster: it has to invent `direction`. That is only acceptable because we know version 1 was inbound-only. If a converter would have to guess, the change is not a new version of the same event. It is a different event, and it deserves a different name.
+Writing the converters is a good test of the change itself. Look at the upcaster: it has to invent `channel`. That is only acceptable because we know version 1 was only published by the web checkout. If a converter would have to guess, the change is not a new version of the same event. It is a different event, and it deserves a different name.
 
 <Callout type="info">
 
@@ -300,7 +300,7 @@ function schemaFor(type: EventType, version: number) {
 }
 ```
 
-Each version of each event gets its own channel name, such as `call.started@2`. A consumer only listens to the versions it understands.
+Each version of each event gets its own channel name, such as `order.placed@2`. A consumer only listens to the versions it understands.
 
 ### Publishing
 
@@ -414,36 +414,36 @@ export function useEvent<T extends EventType, V extends EventVersion<T>>(
 }
 ```
 
-Now the chat team writes code against version 2, fully typed:
+Now the loyalty team writes code against version 2, fully typed:
 
 ```tsx
-// chat/src/useOpenConversationOnCall.ts
+// loyalty/src/useShowPointsOnOrder.ts
 import { useEvent } from '@acme/events-contract/react'
 
-export function useOpenConversationOnCall() {
-  const openConversation = useOpenConversation()
+export function useShowPointsOnOrder() {
+  const showPointsEarned = useShowPointsEarned()
 
-  useEvent('call.started', 2, ({ payload }) => {
-    openConversation({
-      number: payload.remote.number,
-      title: payload.remote.displayName,
+  useEvent('order.placed', 2, ({ payload }) => {
+    showPointsEarned({
+      customerId: payload.customer.id,
+      tier: payload.customer.tier,
     })
   })
 }
 ```
 
-And the history team, still on version 1 of `call.ended`, uses the event only as a signal to refetch. This is where the event bus and server state work together: the event says *something changed*, and React Query fetches *what* changed from the source of truth.
+And the history team, still on version 1 of `order.cancelled`, uses the event only as a signal to refetch. This is where the event bus and server state work together: the event says *something changed*, and React Query fetches *what* changed from the source of truth.
 
 ```tsx
-// history/src/useRefreshHistoryOnCallEnd.ts
+// order-history/src/useRefreshHistoryOnCancel.ts
 import { useQueryClient } from '@tanstack/react-query'
 import { useEvent } from '@acme/events-contract/react'
 
-export function useRefreshHistoryOnCallEnd() {
+export function useRefreshHistoryOnCancel() {
   const queryClient = useQueryClient()
 
-  useEvent('call.ended', 1, () => {
-    queryClient.invalidateQueries({ queryKey: ['call-history'] })
+  useEvent('order.cancelled', 1, () => {
+    queryClient.invalidateQueries({ queryKey: ['order-history'] })
   })
 }
 ```
@@ -469,7 +469,7 @@ Two details are easy to miss.
 
 **A new event version is not a breaking change for the package.** Old consumers keep working, because producers keep publishing the old version through the downcaster. The package only has a breaking release when a version is removed.
 
-**Removing a version needs data, not a guess.** The `registerSubscriber` call in `subscribe` is there for this. It records which micro-frontend subscribes to which version and reports it to your analytics. When no deployed micro-frontend has subscribed to `call.started@1` for a few weeks, it is safe to delete version 1 and its converters in a major release.
+**Removing a version needs data, not a guess.** The `registerSubscriber` call in `subscribe` is there for this. It records which micro-frontend subscribes to which version and reports it to your analytics. When no deployed micro-frontend has subscribed to `order.placed@1` for a few weeks, it is safe to delete version 1 and its converters in a major release.
 
 ```ts
 function registerSubscriber(type: EventType, version: number) {
@@ -532,7 +532,7 @@ The producer's tests call the code that publishes and check that `publish` does 
 
 ## Beyond One Page
 
-A communications app rarely lives in one tab. The softphone might run in an Electron window while the chat is in another, or the user might have two browser tabs open. The bus above only covers one JavaScript realm, but the envelope was designed to travel.
+Users rarely keep an application in one tab. A customer might browse the catalogue in one tab and check out in another, and a desktop app built with Electron can have several windows. The bus above only covers one JavaScript realm, but the envelope was designed to travel.
 
 Because envelopes are plain data, with no functions and no class instances, they survive the structured clone algorithm. That means a transport adapter can forward them through `BroadcastChannel` between tabs, or through Electron IPC between windows, and the receiving side dispatches them on its local bus. The contract, the converters and the validation stay the same. Only the transport changes.
 
