@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Render Strategy Lab</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Two experiments on one page.
+   1. The same list, updated by three strategies, with the work and the DOM changes counted.
+   2. The same badge in the light DOM and in a shadow root, under the same page styles. */
+:root{
+  --bg:#f3f5f7; --surface:#ffffff; --ink:#16202a; --muted:#5b6876; --line:#d6dde4;
+  --accent:#2c5fd4; --bar:#2c5fd4; --bar-bg:#e6ebf2;
+  --sans:"Instrument Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1319; --surface:#151c24; --ink:#e4ebf2; --muted:#94a2b1; --line:#27313c;
+    --accent:#7ea3ff; --bar:#7ea3ff; --bar-bg:#222c38; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1319; --surface:#151c24; --ink:#e4ebf2; --muted:#94a2b1; --line:#27313c;
+  --accent:#7ea3ff; --bar:#7ea3ff; --bar-bg:#222c38; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55}
+.wrap{max-width:1120px;margin:0 auto;padding:28px 20px 56px;display:flex;flex-direction:column;gap:26px}
+h1{margin:0;font-size:clamp(26px,4vw,36px);line-height:1.1;font-weight:700;letter-spacing:-.02em}
+h2{margin:0;font-size:19px;font-weight:600;letter-spacing:-.01em}
+.lede{margin:8px 0 0;max-width:68ch;color:var(--muted)}
+section{display:flex;flex-direction:column;gap:14px}
+section > p{margin:0;max-width:72ch;color:var(--muted)}
+
+/* Controls */
+.controls{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
+.group{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.group > span{font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-right:4px}
+button{font:inherit;font-size:14px;font-weight:500;padding:8px 13px;border-radius:8px;border:1px solid var(--line);
+  background:var(--surface);color:var(--ink);cursor:pointer}
+button:hover{border-color:var(--accent)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--surface);font-weight:600}
+label.check{display:inline-flex;gap:7px;align-items:center;font-size:14px;cursor:pointer}
+input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;margin:0}
+
+/* Strategy panels */
+.panels{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+@media (max-width:860px){.panels{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.panel header{display:flex;flex-direction:column;gap:2px}
+.panel header strong{font-size:16px}
+.panel header small{color:var(--muted);font-size:13px}
+.stats{display:flex;flex-direction:column;gap:9px;margin:0}
+.stat{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 10px;align-items:baseline}
+.stat dt{font-size:12.5px;color:var(--muted)}
+.stat dd{margin:0;font-family:var(--mono);font-size:14px;font-variant-numeric:tabular-nums;text-align:right}
+.meter{grid-column:1 / -1;height:5px;background:var(--bar-bg);border-radius:3px;overflow:hidden}
+.meter i{display:block;height:100%;width:0;background:var(--bar);border-radius:3px;transition:width .25s ease}
+.list{list-style:none;margin:0;padding:0;height:210px;overflow:auto;border:1px solid var(--line);border-radius:8px;
+  font-family:var(--mono);font-size:12.5px}
+.list li{display:flex;gap:10px;padding:3px 10px;border-bottom:1px solid var(--line)}
+.list li:last-child{border-bottom:0}
+.list .n{color:var(--muted);min-width:4ch;text-align:right}
+.flash{animation:flash .9s ease}
+@keyframes flash{from{background:color-mix(in srgb,var(--accent) 28%,transparent)}to{background:transparent}}
+.note{font-size:13.5px;color:var(--muted);margin:0}
+
+/* Encapsulation */
+.encap{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:700px){.encap{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.card strong{font-size:15px}
+.card .demo{display:flex;gap:10px;align-items:center;min-height:56px;flex-wrap:wrap}
+pre{margin:0;font-family:var(--mono);font-size:12px;line-height:1.5;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere}
+.toggles{display:flex;flex-direction:column;gap:8px}
+.toggles code{font-family:var(--mono);font-size:12.5px;background:var(--bar-bg);padding:1px 5px;border-radius:4px}
+</style>
+
+<!-- The light DOM badge's own stylesheet. It uses a plain class name, like most component CSS. -->
+<style id="light-badge-styles">
+.badge{display:inline-block;padding:4px 10px;border-radius:999px;font:600 13px/1.4 var(--sans);
+  color:#fff;background:var(--badge-color,#16815f)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Render Strategy Lab</h1>
+    <p class="lede">The same list, kept in sync with the same data by three strategies. Each action runs on all three, and the panels count the work each one did and how many DOM nodes it changed.</p>
+  </header>
+
+  <section aria-labelledby="updates-title">
+    <h2 id="updates-title">1. Updating a list</h2>
+    <div class="controls">
+      <div class="group" role="group" aria-label="Number of rows">
+        <span>Rows</span>
+        <button type="button" data-size="100">100</button>
+        <button type="button" data-size="1000" aria-pressed="true">1,000</button>
+        <button type="button" data-size="5000">5,000</button>
+      </div>
+      <div class="group" role="group" aria-label="Actions">
+        <span>Action</span>
+        <button type="button" data-action="editOne">Edit one row</button>
+        <button type="button" data-action="editAll">Edit every row</button>
+        <button type="button" data-action="prepend">Add a row at the top</button>
+      </div>
+      <label class="check"><input type="checkbox" id="keys"> Use keys in the Virtual DOM</label>
+    </div>
+
+    <div class="panels">
+      <article class="panel" data-strategy="vdom">
+        <header><strong>Virtual DOM</strong><small>Re-render the list, diff the trees, patch the difference.</small></header>
+        <dl class="stats"></dl>
+        <ul class="list" aria-label="Virtual DOM list"></ul>
+      </article>
+      <article class="panel" data-strategy="signals">
+        <header><strong>Signals</strong><small>Each value knows which DOM node reads it.</small></header>
+        <dl class="stats"></dl>
+        <ul class="list" aria-label="Signals list"></ul>
+      </article>
+      <article class="panel" data-strategy="html">
+        <header><strong>innerHTML</strong><small>Rebuild the list as a string and replace it.</small></header>
+        <dl class="stats"></dl>
+        <ul class="list" aria-label="innerHTML list"></ul>
+      </article>
+    </div>
+    <p class="note" id="summary" aria-live="polite">Pick an action to compare the three strategies.</p>
+  </section>
+
+  <section aria-labelledby="encap-title">
+    <h2 id="encap-title">2. Shadow DOM is a different question</h2>
+    <p>Shadow DOM does not decide how a component updates. It decides which styles and selectors can reach it. Turn on the page rules and compare the same badge with and without a shadow root.</p>
+    <div class="toggles">
+      <label class="check"><input type="checkbox" data-rule="global"> Page stylesheet: <code>.badge { background: crimson; text-transform: uppercase }</code></label>
+      <label class="check"><input type="checkbox" data-rule="token"> Design token: <code>:root { --badge-color: rebeccapurple }</code></label>
+      <label class="check"><input type="checkbox" data-rule="part"> Part rule: <code>status-badge::part(label) { outline: 2px dashed orange }</code></label>
+    </div>
+    <div class="encap">
+      <div class="card">
+        <strong>Light DOM</strong>
+        <div class="demo"><span class="badge">Online</span><span class="badge">In a call</span></div>
+        <pre>&lt;span class="badge"&gt;Online&lt;/span&gt;</pre>
+      </div>
+      <div class="card">
+        <strong>Shadow DOM</strong>
+        <div class="demo"><status-badge>Online</status-badge><status-badge>In a call</status-badge></div>
+        <pre>&lt;status-badge&gt;Online&lt;/status-badge&gt;</pre>
+      </div>
+    </div>
+    <p class="note" id="encap-note" aria-live="polite">No page rules applied.</p>
+  </section>
+</div>
+
+<script>
+/* ------------------------------------------------------------------ */
+/* Data shared by every strategy                                       */
+/* ------------------------------------------------------------------ */
+const WORDS_A = ['amber','quiet','rapid','silver','lunar','brisk','coral','misty','bold','tidal','north','ember'];
+const WORDS_B = ['falcon','harbor','signal','meadow','comet','lantern','river','orbit','summit','cedar','beacon','delta'];
+let seed = 7;
+const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+const word = () => `${WORDS_A[(rand() * 12) | 0]} ${WORDS_B[(rand() * 12) | 0]}`;
+
+let nextId = 1;
+let rows = [];
+const makeRows = (n) => Array.from({ length: n }, () => ({ id: nextId++, label: word() }));
+
+/* ------------------------------------------------------------------ */
+/* Strategy 1: a minimal Virtual DOM                                   */
+/* ------------------------------------------------------------------ */
+const vdomStats = { compared: 0 };
+
+function h(tag, props, ...children) {
+  return {
+    tag,
+    props: props || {},
+    key: props && props.key,
+    children: children.flat().map((c) => (typeof c === 'object' ? c : { text: String(c) })),
+  };
+}
+
+function mount(vnode) {
+  if (vnode.text !== undefined) return (vnode.el = document.createTextNode(vnode.text));
+  const el = (vnode.el = document.createElement(vnode.tag));
+  for (const [name, value] of Object.entries(vnode.props)) {
+    if (name !== 'key') el.setAttribute(name, value);
+  }
+  for (const child of vnode.children) el.appendChild(mount(child));
+  return el;
+}
+
+function patch(oldNode, newNode, keyed) {
+  vdomStats.compared++;
+  if (oldNode.text !== undefined && newNode.text !== undefined) {
+    newNode.el = oldNode.el;
+    if (oldNode.text !== newNode.text) newNode.el.data = newNode.text;
+    return;
+  }
+  if (oldNode.tag !== newNode.tag) {
+    oldNode.el.replaceWith(mount(newNode));
+    return;
+  }
+  const el = (newNode.el = oldNode.el);
+  for (const [name, value] of Object.entries(newNode.props)) {
+    if (name !== 'key' && oldNode.props[name] !== value) el.setAttribute(name, value);
+  }
+  for (const name of Object.keys(oldNode.props)) {
+    if (!(name in newNode.props)) el.removeAttribute(name);
+  }
+  if (keyed && newNode.children.length && newNode.children[0].key !== undefined) {
+    patchKeyedChildren(el, oldNode.children, newNode.children);
+  } else {
+    patchChildren(el, oldNode.children, newNode.children);
+  }
+}
+
+// Children are matched by position: old child 0 with new child 0, and so on.
+function patchChildren(el, oldChildren, newChildren) {
+  const common = Math.min(oldChildren.length, newChildren.length);
+  for (let i = 0; i < common; i++) patch(oldChildren[i], newChildren[i], false);
+  for (let i = common; i < newChildren.length; i++) el.appendChild(mount(newChildren[i]));
+  for (let i = common; i < oldChildren.length; i++) el.removeChild(oldChildren[i].el);
+}
+
+// Children are matched by key, so a row keeps its DOM node when it moves.
+function patchKeyedChildren(el, oldChildren, newChildren) {
+  const byKey = new Map(oldChildren.map((c) => [c.key, c]));
+  newChildren.forEach((child, i) => {
+    const old = byKey.get(child.key);
+    if (old) {
+      patch(old, child, true);
+      byKey.delete(child.key);
+    } else {
+      mount(child);
+    }
+    const current = el.childNodes[i];
+    if (current !== child.el) el.insertBefore(child.el, current || null);
+  });
+  for (const leftover of byKey.values()) leftover.el.remove();
+}
+
+const RowView = (row, keyed) =>
+  h('li', keyed ? { key: row.id } : null,
+    h('span', { class: 'n' }, row.id),
+    h('span', { class: 'label' }, row.label));
+
+const ListView = (items, keyed) => h('ul', { class: 'list' }, items.map((r) => RowView(r, keyed)));
+
+/* ------------------------------------------------------------------ */
+/* Strategy 2: minimal signals                                          */
+/* ------------------------------------------------------------------ */
+const signalStats = { effects: 0 };
+let currentEffect = null;
+
+function signal(value) {
+  const subscribers = new Set();
+  return {
+    get() {
+      if (currentEffect) subscribers.add(currentEffect);
+      return value;
+    },
+    set(next) {
+      if (Object.is(next, value)) return;
+      value = next;
+      for (const run of [...subscribers]) run();
+    },
+  };
+}
+
+function effect(fn) {
+  const run = () => {
+    signalStats.effects++;
+    const previous = currentEffect;
+    currentEffect = run;
+    try { fn(); } finally { currentEffect = previous; }
+  };
+  run();
+}
+
+// What a compiler such as Solid's or Svelte's would emit for one row:
+// build the nodes once, then bind each dynamic value to the node that shows it.
+function createRow(row) {
+  const li = document.createElement('li');
+  const n = document.createElement('span');
+  n.className = 'n';
+  n.textContent = String(row.id);
+  const label = document.createElement('span');
+  label.className = 'label';
+  const text = document.createTextNode('');
+  label.appendChild(text);
+  li.append(n, label);
+  effect(() => { text.data = row.label.get(); });
+  return li;
+}
+
+/* ------------------------------------------------------------------ */
+/* The three strategies, behind the same small interface               */
+/* ------------------------------------------------------------------ */
+const panels = Object.fromEntries(
+  [...document.querySelectorAll('.panel')].map((p) => [p.dataset.strategy, p]),
+);
+const keysBox = document.getElementById('keys');
+
+const strategies = {
+  vdom: {
+    label: 'Virtual DOM',
+    unit: 'nodes compared',
+    tree: null,
+    reset(items) {
+      const ul = panels.vdom.querySelector('.list');
+      this.tree = ListView(items, keysBox.checked);
+      ul.replaceChildren(...this.tree.children.map(mount));
+      this.tree.el = ul;
+    },
+    // A Virtual DOM does not know what changed. Every update re-renders and diffs the whole list.
+    render(items) {
+      vdomStats.compared = 0;
+      const next = ListView(items, keysBox.checked);
+      patch(this.tree, next, keysBox.checked);
+      this.tree = next;
+      return vdomStats.compared;
+    },
+    editOne() { return this.render(rows); },
+    editAll() { return this.render(rows); },
+    prepend() { return this.render(rows); },
+  },
+
+  signals: {
+    label: 'Signals',
+    unit: 'effects run',
+    store: new Map(),
+    list: null,
+    reset(items) {
+      const ul = panels.signals.querySelector('.list');
+      ul.replaceChildren();
+      this.store = new Map();
+      this.list = signal(items.map((r) => this.wrap(r)));
+      const nodes = new Map();
+      // The list effect only runs when the array itself changes, not when a label does.
+      effect(() => {
+        const current = this.list.get();
+        current.forEach((row, i) => {
+          let li = nodes.get(row.id);
+          if (!li) nodes.set(row.id, (li = createRow(row)));
+          if (ul.childNodes[i] !== li) ul.insertBefore(li, ul.childNodes[i] || null);
+        });
+      });
+    },
+    wrap(r) {
+      const row = { id: r.id, label: signal(r.label) };
+      this.store.set(r.id, row);
+      return row;
+    },
+    // A signal knows its readers, so the event handler only touches the value that changed.
+    editOne(id, label) {
+      signalStats.effects = 0;
+      this.store.get(id).label.set(label);
+      return signalStats.effects;
+    },
+    editAll() {
+      signalStats.effects = 0;
+      for (const r of rows) this.store.get(r.id).label.set(r.label);
+      return signalStats.effects;
+    },
+    prepend(row) {
+      signalStats.effects = 0;
+      this.list.set([this.wrap(row), ...this.list.get()]);
+      return signalStats.effects;
+    },
+  },
+
+  html: {
+    label: 'innerHTML',
+    unit: 'characters parsed',
+    reset(items) { this.render(items); },
+    render(items) {
+      const html = items
+        .map((r) => `<li><span class="n">${r.id}</span><span class="label">${r.label}</span></li>`)
+        .join('');
+      panels.html.querySelector('.list').innerHTML = html;
+      return html.length;
+    },
+    editOne() { return this.render(rows); },
+    editAll() { return this.render(rows); },
+    prepend() { return this.render(rows); },
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* Measuring: work reported by each strategy, DOM changes by a          */
+/* MutationObserver, script time by performance.now()                  */
+/* ------------------------------------------------------------------ */
+const observers = {};
+for (const name of Object.keys(strategies)) {
+  observers[name] = new MutationObserver(() => {});
+  observers[name].observe(panels[name].querySelector('.list'), {
+    childList: true, subtree: true, characterData: true, attributes: true,
+  });
+}
+
+function countChanges(records) {
+  let n = 0;
+  for (const r of records) {
+    n += r.type === 'childList' ? r.addedNodes.length + r.removedNodes.length : 1;
+  }
+  return n;
+}
+
+const fmt = (n) => n.toLocaleString('en-US', { maximumFractionDigits: n < 10 ? 2 : 0 });
+
+function renderStats(results) {
+  const max = {
+    dom: Math.max(1, ...Object.values(results).map((r) => r.dom)),
+    time: Math.max(0.01, ...Object.values(results).map((r) => r.time)),
+  };
+  for (const [name, r] of Object.entries(results)) {
+    const s = strategies[name];
+    panels[name].querySelector('.stats').innerHTML = `
+      <div class="stat"><dt>Work: ${s.unit}</dt><dd>${fmt(r.work)}</dd></div>
+      <div class="stat"><dt>DOM nodes changed</dt><dd>${fmt(r.dom)}</dd>
+        <span class="meter" aria-hidden="true"><i style="width:${(r.dom / max.dom) * 100}%"></i></span></div>
+      <div class="stat"><dt>Script time</dt><dd>${r.time.toFixed(2)} ms</dd>
+        <span class="meter" aria-hidden="true"><i style="width:${(r.time / max.time) * 100}%"></i></span></div>`;
+  }
+}
+
+function run(action, args, describe) {
+  const results = {};
+  for (const [name, s] of Object.entries(strategies)) {
+    observers[name].takeRecords();
+    const t0 = performance.now();
+    const work = s[action](...args);
+    const time = performance.now() - t0;
+    results[name] = { work, time, dom: countChanges(observers[name].takeRecords()) };
+  }
+  renderStats(results);
+  document.getElementById('summary').textContent = describe(results);
+  return results;
+}
+
+function flash(id) {
+  for (const p of Object.values(panels)) {
+    const li = [...p.querySelectorAll('.list li')].find((el) => el.firstChild.textContent === String(id));
+    if (!li) continue;
+    li.classList.remove('flash');
+    void li.offsetWidth;
+    li.classList.add('flash');
+  }
+}
+
+let size = 1000;
+
+function reset() {
+  nextId = 1;
+  seed = 7;
+  rows = makeRows(size);
+  for (const s of Object.values(strategies)) s.reset(rows);
+  for (const o of Object.values(observers)) o.takeRecords();
+  renderStats({
+    vdom: { work: 0, dom: 0, time: 0 },
+    signals: { work: 0, dom: 0, time: 0 },
+    html: { work: 0, dom: 0, time: 0 },
+  });
+  document.getElementById('summary').textContent =
+    `${size.toLocaleString('en-US')} rows rendered. Pick an action to compare the three strategies.`;
+}
+
+const actions = {
+  editOne() {
+    const index = (rand() * rows.length) | 0;
+    const row = rows[index];
+    row.label = word();
+    run('editOne', [row.id, row.label], (r) =>
+      `Row ${row.id} changed. The Virtual DOM compared ${fmt(r.vdom.work)} nodes to find one text change; the signal ran ${fmt(r.signals.work)} effect; innerHTML replaced ${fmt(r.html.dom)} nodes.`);
+    flash(row.id);
+  },
+  editAll() {
+    for (const row of rows) row.label = word();
+    run('editAll', [], (r) =>
+      `Every label changed. Here the strategies converge: ${fmt(r.vdom.dom)} text writes for the Virtual DOM and ${fmt(r.signals.dom)} for signals.`);
+  },
+  prepend() {
+    const row = { id: nextId++, label: word() };
+    rows = [row, ...rows];
+    run('prepend', [row], (r) =>
+      keysBox.checked
+        ? `One row added at the top. With keys, the Virtual DOM inserted ${fmt(r.vdom.dom)} node and left the rest alone.`
+        : `One row added at the top. Without keys, the Virtual DOM matched rows by position and rewrote ${fmt(r.vdom.dom)} nodes. Turn on keys and try again.`);
+    flash(row.id);
+  },
+};
+
+document.querySelectorAll('[data-action]').forEach((b) =>
+  b.addEventListener('click', () => actions[b.dataset.action]()));
+
+document.querySelectorAll('[data-size]').forEach((b) =>
+  b.addEventListener('click', () => {
+    size = Number(b.dataset.size);
+    document.querySelectorAll('[data-size]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    reset();
+  }));
+
+keysBox.addEventListener('change', reset);
+reset();
+
+/* ------------------------------------------------------------------ */
+/* Part 2: the same badge, with and without a shadow root              */
+/* ------------------------------------------------------------------ */
+class StatusBadge extends HTMLElement {
+  constructor() {
+    super();
+    const root = this.attachShadow({ mode: 'open' });
+    root.innerHTML = `
+      <style>
+        .badge { display: inline-block; padding: 4px 10px; border-radius: 999px;
+          font: 600 13px/1.4 var(--sans); color: #fff; background: var(--badge-color, #16815f); }
+      </style>
+      <span class="badge" part="label"><slot></slot></span>`;
+  }
+}
+customElements.define('status-badge', StatusBadge);
+
+const pageRules = {
+  global: '.badge { background: crimson; text-transform: uppercase; letter-spacing: .08em }',
+  token: ':root { --badge-color: rebeccapurple }',
+  part: 'status-badge::part(label) { outline: 2px dashed orange; outline-offset: 2px }',
+};
+const notes = {
+  global: 'The page rule restyles the light DOM badge. It cannot select anything inside the shadow root.',
+  token: 'Custom properties inherit through the shadow boundary, so a design token reaches both badges.',
+  part: 'The shadow badge exposes part="label", so the page can style that one element on purpose.',
+};
+const pageSheet = document.createElement('style');
+document.head.appendChild(pageSheet);
+
+document.querySelectorAll('[data-rule]').forEach((box) =>
+  box.addEventListener('change', () => {
+    const on = [...document.querySelectorAll('[data-rule]')].filter((b) => b.checked).map((b) => b.dataset.rule);
+    pageSheet.textContent = on.map((k) => pageRules[k]).join('\n');
+    document.getElementById('encap-note').textContent = on.length
+      ? on.map((k) => notes[k]).join(' ')
+      : 'No page rules applied.';
+  }));
+</script>
+</body>
+</html>

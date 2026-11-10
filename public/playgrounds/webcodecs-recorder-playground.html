@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WebCodecs Recorder</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: a dark stage with the frames being encoded, a control rail beside it (below it on
+   narrow screens), then the encoder readings, the chunk timeline and the finished file. */
+:root{
+  --bg:#f3f5f8; --surface:#ffffff; --ink:#161b24; --muted:#5b6474; --line:#d6dbe3;
+  --accent:#3a5bd9; --good:#17795f; --warn:#a65d0b; --bad:#b3382c;
+  --stage:#07090d; --stage-ink:#d6deec; --stage-dim:#8590a3; --stage-line:#1f2633;
+  --c-delta:#7c93f0; --c-key:#ffad40; --rec:#ff4d4d;
+  --sans:"Instrument Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1117; --surface:#151a23; --ink:#e4e9f2; --muted:#949db0; --line:#283041;
+    --accent:#8ea4ff; --good:#4fc79f; --warn:#f0aa4c; --bad:#ff7b6e;
+    --c-delta:#7c93f0; --c-key:#ffad40; --rec:#ff5c5c;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1117; --surface:#151a23; --ink:#e4e9f2; --muted:#949db0; --line:#283041;
+  --accent:#8ea4ff; --good:#4fc79f; --warn:#f0aa4c; --bad:#ff7b6e;
+  --c-delta:#7c93f0; --c-key:#ffad40; --rec:#ff5c5c;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:20px;padding-block:28px 48px;display:flex;flex-direction:column;gap:22px}
+h1{margin:0;font-size:clamp(26px,4vw,36px);line-height:1.1;font-weight:700;letter-spacing:-.02em;text-wrap:balance}
+h2{margin:0;font-size:17px;font-weight:600;letter-spacing:-.005em}
+.lede{margin:8px 0 0;max-width:64ch;color:var(--muted)}
+.lab{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:18px;align-items:start}
+@media (max-width:780px){.lab{grid-template-columns:minmax(0,1fr)}}
+
+/* Stage */
+.stage{position:relative;background:var(--stage);border-radius:10px;overflow:hidden;aspect-ratio:16/9;max-width:100%}
+.stage canvas{display:block;width:100%;height:100%}
+.read{position:absolute;font-family:var(--mono);font-size:12px;color:var(--stage-ink);pointer-events:none;
+  font-variant-numeric:tabular-nums;line-height:1.35;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+.read small{display:block;color:var(--stage-dim);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
+.read.tl{top:12px;left:14px}.read.tr{top:12px;right:14px;text-align:right}
+.read.bl{bottom:12px;left:14px;color:var(--stage-dim)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--stage-dim);margin-right:6px;vertical-align:1px}
+.dot.on{background:var(--rec);animation:blink 1s steps(2,start) infinite}
+@keyframes blink{to{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.dot.on{animation:none}}
+.notice{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;gap:8px;
+  padding:24px 13%;color:var(--stage-ink);background:var(--stage)}
+.notice strong{font-size:18px;font-weight:600}
+.notice p{margin:0;max-width:52ch;color:var(--stage-dim)}
+
+/* Controls */
+.rail{display:flex;flex-direction:column;gap:16px}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field > label,.legend{font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+fieldset{border:0;margin:0;padding:0;min-width:0;display:flex;flex-direction:column;gap:7px}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg label{position:relative;display:block;text-align:center;padding:9px 6px;font-size:13.5px;font-weight:500;cursor:pointer;color:var(--muted)}
+.seg input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.seg label:has(input:checked){background:var(--accent);color:var(--surface);font-weight:600}
+.seg label:has(input:focus-visible){outline:2px solid var(--ink);outline-offset:-3px}
+.seg label:has(input:disabled){cursor:not-allowed;opacity:.6}
+.seg input:disabled{cursor:not-allowed;opacity:0}
+.row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.val{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+select{font:inherit;font-size:14px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);width:100%}
+input[type=range]{width:100%;margin:0;accent-color:var(--accent)}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+button{font:inherit;font-size:13.5px;font-weight:500;padding:9px 11px;border-radius:8px;border:1px solid var(--line);
+  background:var(--surface);color:var(--ink);cursor:pointer}
+button:hover{border-color:var(--muted)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--surface);font-weight:600}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+button:disabled,select:disabled,input:disabled{opacity:.5;cursor:not-allowed}
+.check{display:flex;gap:8px;align-items:center;font-size:13.5px;color:var(--muted)}
+.check input{accent-color:var(--accent);margin:0}
+.status{margin:0;font-size:13px;color:var(--ink);border-left:3px solid var(--accent);padding-left:10px}
+.status[data-level="bad"]{border-left-color:var(--bad)}
+
+/* Readings */
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:760px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:13px 15px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.tile .who{font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.tile .num{font-family:var(--mono);font-size:25px;font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:-.02em;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .num span{font-size:13px;color:var(--muted);margin-left:4px;letter-spacing:0}
+.tile .sub{font-size:13px;color:var(--muted)}
+
+/* Chunk timeline */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.panel .hint{margin:0;font-size:13.5px;color:var(--muted);max-width:72ch}
+.timeline{position:relative;height:150px;border-bottom:1px solid var(--line)}
+.timeline canvas{display:block;width:100%;height:100%}
+.timeline .scale{position:absolute;top:0;left:0;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.timeline .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13.5px;color:var(--muted)}
+.key{display:flex;gap:14px;flex-wrap:wrap;font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.key i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.key .delta{background:var(--c-delta)}.key .keyf{background:var(--c-key)}
+
+/* Result */
+.result{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:760px){.result{grid-template-columns:minmax(0,1fr)}}
+.result video{width:100%;border-radius:8px;background:#000;display:block}
+.facts{margin:0;display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:14px}
+.facts dt{color:var(--muted)}
+.facts dd{margin:0;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;text-align:right}
+.download{display:inline-block;margin-top:14px;text-decoration:none;font-weight:600;font-size:14px;padding:9px 14px;border-radius:8px;background:var(--accent);color:var(--surface)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>WebCodecs Recorder</h1>
+    <p class="lede">Every frame drawn on the stage goes to a <code>VideoEncoder</code>, and the sound goes to an <code>AudioEncoder</code>. The compressed chunks are written into an MP4 file without leaving the browser.</p>
+  </header>
+
+  <section class="lab" aria-label="Recorder">
+    <div class="stage">
+      <canvas id="view" aria-label="The frames being encoded"></canvas>
+      <div class="read tl"><small id="r-mode">Preview</small><span><i class="dot" id="r-dot"></i><span id="r-time">00:00.0</span></span></div>
+      <div class="read tr"><small>Encoder queue</small><span id="r-queue">–</span></div>
+      <div class="read bl" id="r-format">–</div>
+      <div class="notice" id="notice" hidden>
+        <strong id="notice-title">WebCodecs is not available in this browser</strong>
+        <p id="notice-text">VideoEncoder ships in Chrome and Edge 94 or later, Firefox 130 or later on desktop, and Safari 16.4 or later.</p>
+      </div>
+    </div>
+
+    <div class="rail">
+      <fieldset>
+        <span class="legend" id="lg-source">Source</span>
+        <div class="seg" role="radiogroup" aria-labelledby="lg-source">
+          <label><input type="radio" name="source" value="synthetic" checked>Test pattern</label>
+          <label><input type="radio" name="source" value="camera">Camera</label>
+        </div>
+      </fieldset>
+
+      <div class="field">
+        <label for="codec">Video codec</label>
+        <select id="codec"></select>
+      </div>
+
+      <fieldset>
+        <span class="legend" id="lg-size">Resolution</span>
+        <div class="seg" role="radiogroup" aria-labelledby="lg-size">
+          <label><input type="radio" name="size" value="360">640×360</label>
+          <label><input type="radio" name="size" value="720" checked>1280×720</label>
+        </div>
+      </fieldset>
+
+      <div class="field">
+        <div class="row"><label for="bitrate">Target bitrate</label><span class="val" id="bitrate-val">1,500 kbps</span></div>
+        <input type="range" id="bitrate" min="250" max="4000" step="250" value="1500">
+      </div>
+
+      <div class="field">
+        <label for="keyevery">Key frame every</label>
+        <select id="keyevery">
+          <option value="1">1 second</option>
+          <option value="2" selected>2 seconds</option>
+          <option value="5">5 seconds</option>
+          <option value="10">10 seconds</option>
+        </select>
+      </div>
+
+      <fieldset>
+        <span class="legend" id="lg-latency">Latency mode</span>
+        <div class="seg" role="radiogroup" aria-labelledby="lg-latency">
+          <label><input type="radio" name="latency" value="realtime" checked>Realtime</label>
+          <label><input type="radio" name="latency" value="quality">Quality</label>
+        </div>
+      </fieldset>
+
+      <div class="actions">
+        <button type="button" class="primary" id="record">Record</button>
+        <button type="button" id="force" disabled>Key frame now</button>
+      </div>
+      <label class="check"><input type="checkbox" id="monitor">Play the test tone</label>
+      <p class="status" id="status" role="status">Recordings stop after 60 seconds.</p>
+    </div>
+  </section>
+
+  <section class="tiles" aria-label="Encoder readings">
+    <div class="tile"><span class="who">Frames encoded</span><span class="num" id="t-frames">0</span><span class="sub" id="t-dropped">0 dropped</span></div>
+    <div class="tile"><span class="who">Bitrate</span><span class="num"><b id="t-bitrate">–</b><span>kbps</span></span><span class="sub" id="t-target">target 1,500</span></div>
+    <div class="tile"><span class="who">Encode time</span><span class="num"><b id="t-latency">–</b><span>ms</span></span><span class="sub">per frame, last 30</span></div>
+    <div class="tile"><span class="who">Key frames</span><span class="num" id="t-keys">0</span><span class="sub" id="t-ratio">–</span></div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-chunks">
+    <h2 id="h-chunks">What the encoder produces</h2>
+    <p class="hint">Each bar is one <code>EncodedVideoChunk</code>, in the order the encoder returned it. A key frame holds a whole picture. A delta frame holds only what changed since the previous frame, which is why most bars are short.</p>
+    <div class="timeline">
+      <canvas id="chunks" aria-label="Size of each encoded video chunk"></canvas>
+      <span class="scale" id="scale"></span>
+      <div class="empty" id="empty">Record to see the chunks</div>
+    </div>
+    <div class="key"><span><i class="keyf"></i>key frame</span><span><i class="delta"></i>delta frame</span></div>
+  </section>
+
+  <section class="panel" id="result" aria-labelledby="h-result" hidden>
+    <h2 id="h-result">The file</h2>
+    <div class="result">
+      <video id="playback" controls playsinline></video>
+      <div>
+        <dl class="facts">
+          <dt>Duration</dt><dd id="f-duration">–</dd>
+          <dt>Tracks</dt><dd id="f-tracks">–</dd>
+          <dt>File size</dt><dd id="f-size">–</dd>
+          <dt>Raw frames would be</dt><dd id="f-raw">–</dd>
+          <dt>Compression</dt><dd id="f-ratio">–</dd>
+          <dt>Average bitrate</dt><dd id="f-avg">–</dd>
+        </dl>
+        <a class="download" id="download" download="recording.mp4" href="#">Download MP4</a>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script type="module">
+'use strict';
+
+const MUXER_URL = 'https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.1/build/mp4-muxer.mjs';
+const FPS = 30;
+const FRAME_MS = 1000 / FPS;
+const MAX_SECONDS = 60;
+const MAX_QUEUE = 4;       // frames waiting in the encoder before new ones are dropped
+const BARS = 180;          // chunks shown in the timeline
+
+const VIDEO_CODECS = [
+  { id: 'avc', label: 'H.264', codec: 'avc1.42001f', extra: { avc: { format: 'avc' } } },
+  { id: 'vp9', label: 'VP9', codec: 'vp09.00.31.08', extra: {} },
+  { id: 'av1', label: 'AV1', codec: 'av01.0.05M.08', extra: {} },
+];
+const AUDIO_CODECS = [
+  { id: 'opus', label: 'Opus', codec: 'opus' },
+  { id: 'aac', label: 'AAC', codec: 'mp4a.40.2' },
+];
+const SIZES = { 360: [640, 360], 720: [1280, 720] };
+
+// The AudioWorklet copies the input into 20 ms blocks and posts them to the page.
+const WORKLET = `
+class Tap extends AudioWorkletProcessor {
+  constructor() { super(); this.size = Math.round(sampleRate / 50); this.buf = new Float32Array(this.size); this.n = 0; }
+  process(inputs) {
+    const input = inputs[0] && inputs[0][0];
+    if (!input) return true;
+    let off = 0;
+    while (off < input.length) {
+      const take = Math.min(input.length - off, this.size - this.n);
+      this.buf.set(input.subarray(off, off + take), this.n);
+      this.n += take; off += take;
+      if (this.n === this.size) {
+        this.port.postMessage(this.buf, [this.buf.buffer]);
+        this.buf = new Float32Array(this.size); this.n = 0;
+      }
+    }
+    return true;
+  }
+}
+registerProcessor('tap', Tap);
+`;
+
+const $ = (id) => document.getElementById(id);
+const view = $('view');
+const ctx2d = view.getContext('2d');
+const chunkCanvas = $('chunks');
+const chunkCtx = chunkCanvas.getContext('2d');
+const nf = new Intl.NumberFormat('en');
+
+const state = {
+  source: 'synthetic',
+  size: 720,
+  codec: 'avc',
+  bitrate: 1500,
+  keyEvery: 2,
+  latency: 'realtime',
+  supported: new Set(),
+};
+
+let camera = null;   // { stream, video }
+let rec = null;      // the current recording session
+let resultUrl = null;
+let muxerModule = null;
+
+/* ---------- Helpers ---------- */
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds - m * 60;
+  return `${String(m).padStart(2, '0')}:${s.toFixed(1).padStart(4, '0')}`;
+}
+
+function setStatus(text, level) {
+  $('status').textContent = text;
+  if (level) $('status').dataset.level = level;
+  else delete $('status').dataset.level;
+}
+
+function codecInfo() {
+  return VIDEO_CODECS.find((c) => c.id === state.codec);
+}
+
+function videoConfig(codec = codecInfo()) {
+  const [width, height] = SIZES[state.size];
+  return {
+    codec: codec.codec,
+    width,
+    height,
+    bitrate: state.bitrate * 1000,
+    framerate: FPS,
+    latencyMode: state.latency,
+    ...codec.extra,
+  };
+}
+
+function loadMuxer() {
+  muxerModule ??= import(MUXER_URL);
+  return muxerModule;
+}
+
+/* ---------- Codec support ---------- */
+
+async function checkCodecs() {
+  const select = $('codec');
+  state.supported.clear();
+
+  for (const codec of VIDEO_CODECS) {
+    try {
+      const { supported } = await VideoEncoder.isConfigSupported(videoConfig(codec));
+      if (supported) state.supported.add(codec.id);
+    } catch {
+      // An invalid config throws instead of returning supported: false.
+    }
+  }
+
+  select.innerHTML = '';
+  for (const codec of VIDEO_CODECS) {
+    const option = new Option(
+      state.supported.has(codec.id) ? codec.label : `${codec.label} (not supported)`,
+      codec.id,
+    );
+    option.disabled = !state.supported.has(codec.id);
+    select.add(option);
+  }
+
+  if (!state.supported.has(state.codec)) {
+    state.codec = VIDEO_CODECS.find((c) => state.supported.has(c.id))?.id ?? state.codec;
+  }
+  select.value = state.codec;
+
+  if (state.supported.size === 0) {
+    setStatus('No video codec supports these settings in this browser. Try a lower resolution.', 'bad');
+  }
+  renderControls();
+}
+
+/* ---------- Source ---------- */
+
+function resizeView() {
+  const [width, height] = SIZES[state.size];
+  view.width = width;
+  view.height = height;
+}
+
+// A moving test pattern. The white square flashes on every beep, so the audio and video
+// line up can be checked in the recorded file.
+function drawPattern(now) {
+  const { width: w, height: h } = view;
+  const t = now / 1000;
+  const s = h / 720;
+
+  ctx2d.fillStyle = '#07090d';
+  ctx2d.fillRect(0, 0, w, h);
+
+  ctx2d.strokeStyle = '#1a2130';
+  ctx2d.lineWidth = 1;
+  for (let x = 0; x <= w; x += 80 * s) {
+    ctx2d.beginPath(); ctx2d.moveTo(x, 0); ctx2d.lineTo(x, h); ctx2d.stroke();
+  }
+  for (let y = 0; y <= h; y += 80 * s) {
+    ctx2d.beginPath(); ctx2d.moveTo(0, y); ctx2d.lineTo(w, y); ctx2d.stroke();
+  }
+
+  const colors = ['#7c93f0', '#ffad40', '#4fc79f'];
+  for (let i = 0; i < 3; i++) {
+    const a = t * (0.6 + i * 0.25) + i * 2.1;
+    const x = w / 2 + Math.cos(a) * w * (0.18 + i * 0.07);
+    const y = h / 2 + Math.sin(a * 1.3) * h * (0.2 + i * 0.05);
+    ctx2d.fillStyle = colors[i];
+    ctx2d.beginPath();
+    ctx2d.arc(x, y, (46 - i * 10) * s, 0, Math.PI * 2);
+    ctx2d.fill();
+  }
+
+  const elapsed = rec?.phase === 'recording' ? (now - rec.t0) / 1000 : t;
+  ctx2d.fillStyle = '#d6deec';
+  ctx2d.font = `500 ${Math.round(64 * s)}px "IBM Plex Mono", ui-monospace, monospace`;
+  ctx2d.textAlign = 'center';
+  ctx2d.textBaseline = 'middle';
+  ctx2d.fillText(formatTime(elapsed), w / 2, h / 2);
+
+  const phase = beepPhase(now);
+  ctx2d.fillStyle = phase < 0.08 ? '#ffffff' : '#1a2130';
+  ctx2d.fillRect(w - 110 * s, h - 110 * s, 70 * s, 70 * s);
+}
+
+function drawCamera(now) {
+  const { width: w, height: h } = view;
+  const video = camera.video;
+  const vw = video.videoWidth || w;
+  const vh = video.videoHeight || h;
+  const scale = Math.max(w / vw, h / vh);
+  const dw = vw * scale;
+  const dh = vh * scale;
+
+  ctx2d.fillStyle = '#000';
+  ctx2d.fillRect(0, 0, w, h);
+  if (video.readyState >= 2) ctx2d.drawImage(video, (w - dw) / 2, (h - dh) / 2, dw, dh);
+
+  const elapsed = rec?.phase === 'recording' ? (now - rec.t0) / 1000 : 0;
+  const s = h / 720;
+  ctx2d.fillStyle = 'rgba(0,0,0,.55)';
+  ctx2d.fillRect(w - 206 * s, h - 60 * s, 190 * s, 44 * s);
+  ctx2d.fillStyle = '#ffffff';
+  ctx2d.font = `500 ${Math.round(26 * s)}px "IBM Plex Mono", ui-monospace, monospace`;
+  ctx2d.textAlign = 'center';
+  ctx2d.textBaseline = 'middle';
+  ctx2d.fillText(formatTime(elapsed), w - 111 * s, h - 38 * s);
+}
+
+// 0..1 through the current second of the beep cycle, on the audio clock when there is one.
+function beepPhase(now) {
+  if (rec?.audio) {
+    const t = rec.audio.ctx.currentTime - rec.audio.beepStart;
+    return t >= 0 ? t % 1 : 1;
+  }
+  return (now / 1000) % 1;
+}
+
+async function useCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: true,
+    });
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    video.srcObject = stream;
+    await video.play();
+    camera = { stream, video };
+    setStatus('Camera and microphone are on. Nothing leaves this page.');
+  } catch (error) {
+    document.querySelector('input[name=source][value=synthetic]').checked = true;
+    state.source = 'synthetic';
+    setStatus(`The camera could not be opened (${error.name}). Using the test pattern.`, 'bad');
+  }
+  renderControls();
+}
+
+function stopCamera() {
+  camera?.stream.getTracks().forEach((track) => track.stop());
+  camera = null;
+}
+
+/* ---------- Audio ---------- */
+
+async function startAudio() {
+  if (!('AudioEncoder' in window) || !('AudioWorkletNode' in window)) return null;
+
+  const ctx = new AudioContext({ sampleRate: 48000 });
+  await ctx.resume();
+  const sampleRate = ctx.sampleRate;
+
+  let codec = null;
+  for (const candidate of AUDIO_CODECS) {
+    try {
+      const config = { codec: candidate.codec, sampleRate, numberOfChannels: 1, bitrate: 64000 };
+      if ((await AudioEncoder.isConfigSupported(config)).supported) {
+        codec = { ...candidate, config };
+        break;
+      }
+    } catch {
+      // Not supported here; try the next one.
+    }
+  }
+  if (!codec) {
+    await ctx.close();
+    return null;
+  }
+
+  const moduleUrl = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' }));
+  await ctx.audioWorklet.addModule(moduleUrl);
+  URL.revokeObjectURL(moduleUrl);
+
+  const tap = new AudioWorkletNode(ctx, 'tap', {
+    channelCount: 1,
+    channelCountMode: 'explicit',
+    outputChannelCount: [1],
+  });
+  const silence = ctx.createGain();
+  silence.gain.value = 0;
+  tap.connect(silence).connect(ctx.destination); // keeps the worklet running
+
+  let input;
+  let beepStart = Infinity;
+  const mic = camera?.stream.getAudioTracks().length ? camera.stream : null;
+  if (state.source === 'camera' && mic) {
+    input = ctx.createMediaStreamSource(mic);
+  } else {
+    beepStart = ctx.currentTime + 0.1;
+    input = testTone(ctx, beepStart);
+    const monitor = ctx.createGain();
+    monitor.gain.value = $('monitor').checked ? 1 : 0;
+    input.connect(monitor).connect(ctx.destination);
+    $('monitor').onchange = () => { monitor.gain.value = $('monitor').checked ? 1 : 0; };
+  }
+  input.connect(tap);
+
+  return { ctx, tap, codec, sampleRate, beepStart };
+}
+
+// A quiet hum with a short beep at the start of every second.
+function testTone(ctx, start) {
+  const out = ctx.createGain();
+  out.gain.value = 0.6;
+
+  const hum = ctx.createOscillator();
+  hum.frequency.value = 220;
+  const humGain = ctx.createGain();
+  humGain.gain.value = 0.04;
+  hum.connect(humGain).connect(out);
+
+  const beep = ctx.createOscillator();
+  beep.frequency.value = 880;
+  const beepGain = ctx.createGain();
+  beepGain.gain.setValueAtTime(0, ctx.currentTime);
+  for (let k = 0; k <= MAX_SECONDS + 1; k++) {
+    beepGain.gain.setValueAtTime(0.3, start + k);
+    beepGain.gain.setValueAtTime(0, start + k + 0.08);
+  }
+  beep.connect(beepGain).connect(out);
+
+  hum.start();
+  beep.start();
+  return out;
+}
+
+/* ---------- Recording ---------- */
+
+async function startRecording() {
+  if (rec) return;
+  rec = { phase: 'starting' };
+  renderControls();
+  setStatus('Starting the encoders…');
+
+  try {
+    const { Muxer, ArrayBufferTarget } = await loadMuxer();
+    const codec = codecInfo();
+    const config = videoConfig(codec);
+    const audio = await startAudio();
+
+    const target = new ArrayBufferTarget();
+    const muxer = new Muxer({
+      target,
+      video: { codec: codec.id, width: config.width, height: config.height, frameRate: FPS },
+      audio: audio
+        ? { codec: audio.codec.id, numberOfChannels: 1, sampleRate: audio.sampleRate }
+        : undefined,
+      fastStart: 'in-memory',
+      firstTimestampBehavior: 'offset',
+    });
+
+    const session = {
+      phase: 'starting',
+      codec,
+      config,
+      audio,
+      muxer,
+      target,
+      t0: 0,
+      nextFrameAt: 0,
+      lastKeyAt: -Infinity,
+      forceKey: false,
+      framesIn: 0,
+      framesOut: 0,
+      dropped: 0,
+      samples: 0,
+      bytes: 0,
+      audioBytes: 0,
+      keyCount: 0,
+      keyBytes: 0,
+      deltaCount: 0,
+      deltaBytes: 0,
+      chunks: [],
+      recent: [],
+      latencies: [],
+      sentAt: new Map(),
+    };
+
+    session.encoder = new VideoEncoder({
+      output: (chunk, meta) => {
+        muxer.addVideoChunk(chunk, meta);
+        onVideoChunk(session, chunk);
+      },
+      error: (error) => fail(error),
+    });
+    session.encoder.configure(config);
+
+    if (audio) {
+      session.audioEncoder = new AudioEncoder({
+        output: (chunk, meta) => {
+          muxer.addAudioChunk(chunk, meta);
+          session.audioBytes += chunk.byteLength;
+        },
+        error: (error) => fail(error),
+      });
+      session.audioEncoder.configure(audio.codec.config);
+
+      audio.tap.port.onmessage = ({ data }) => {
+        if (session.phase !== 'recording') return;
+        const audioData = new AudioData({
+          format: 'f32-planar',
+          sampleRate: audio.sampleRate,
+          numberOfChannels: 1,
+          numberOfFrames: data.length,
+          timestamp: Math.round((session.samples / audio.sampleRate) * 1e6),
+          data,
+        });
+        session.audioEncoder.encode(audioData);
+        audioData.close();
+        session.samples += data.length;
+      };
+    }
+
+    rec = session;
+    rec.phase = 'recording';
+    rec.t0 = performance.now();
+    $('result').hidden = true;
+    setStatus(audio
+      ? `Recording ${codec.label} video and ${audio.codec.label} audio.`
+      : `Recording ${codec.label} video. This browser has no audio encoder, so the file is silent.`);
+  } catch (error) {
+    fail(error);
+  }
+  renderControls();
+}
+
+function captureFrame(now) {
+  if (rec?.phase !== 'recording') return;
+  const elapsed = now - rec.t0;
+  if (elapsed >= MAX_SECONDS * 1000) {
+    stopRecording();
+    return;
+  }
+  if (elapsed < rec.nextFrameAt) return;
+  rec.nextFrameAt = (Math.floor(elapsed / FRAME_MS) + 1) * FRAME_MS;
+
+  // Backpressure: if the encoder is falling behind, drop this frame instead of queueing it.
+  if (rec.encoder.encodeQueueSize > MAX_QUEUE) {
+    rec.dropped++;
+    return;
+  }
+
+  const timestamp = Math.round(elapsed * 1000); // microseconds
+  const frame = new VideoFrame(view, { timestamp, duration: Math.round(FRAME_MS * 1000) });
+  const keyFrame = rec.forceKey || elapsed - rec.lastKeyAt >= state.keyEvery * 1000;
+  if (keyFrame) {
+    rec.lastKeyAt = elapsed;
+    rec.forceKey = false;
+  }
+
+  rec.sentAt.set(timestamp, performance.now());
+  rec.encoder.encode(frame, { keyFrame });
+  frame.close();
+  rec.framesIn++;
+}
+
+function onVideoChunk(session, chunk) {
+  const now = performance.now();
+  const key = chunk.type === 'key';
+  session.framesOut++;
+  session.bytes += chunk.byteLength;
+  if (key) {
+    session.keyCount++;
+    session.keyBytes += chunk.byteLength;
+  } else {
+    session.deltaCount++;
+    session.deltaBytes += chunk.byteLength;
+  }
+
+  session.chunks.push({ size: chunk.byteLength, key });
+  if (session.chunks.length > BARS) session.chunks.shift();
+
+  session.recent.push({ at: now, size: chunk.byteLength });
+  while (session.recent.length && now - session.recent[0].at > 1000) session.recent.shift();
+
+  const sent = session.sentAt.get(chunk.timestamp);
+  if (sent !== undefined) {
+    session.sentAt.delete(chunk.timestamp);
+    session.latencies.push(now - sent);
+    if (session.latencies.length > 30) session.latencies.shift();
+  }
+}
+
+async function stopRecording() {
+  if (rec?.phase !== 'recording') return;
+  const session = rec;
+  session.phase = 'finalizing';
+  session.duration = (performance.now() - session.t0) / 1000;
+  renderControls();
+  setStatus('Flushing the encoders and writing the file…');
+
+  try {
+    await session.encoder.flush();
+    if (session.audioEncoder) await session.audioEncoder.flush();
+    session.muxer.finalize();
+
+    const blob = new Blob([session.target.buffer], { type: 'video/mp4' });
+    showResult(session, blob);
+    setStatus('Done. The file was built in this tab.');
+  } catch (error) {
+    setStatus(`The file could not be written: ${error.message}`, 'bad');
+  } finally {
+    cleanup(session);
+    rec = null;
+    renderControls();
+  }
+}
+
+function cleanup(session) {
+  if (session.encoder && session.encoder.state !== 'closed') session.encoder.close();
+  if (session.audioEncoder && session.audioEncoder.state !== 'closed') session.audioEncoder.close();
+  if (session.audio) {
+    session.audio.tap.port.onmessage = null;
+    session.audio.ctx.close();
+  }
+}
+
+function fail(error) {
+  console.error(error);
+  setStatus(`The encoder stopped: ${error.message || error}`, 'bad');
+  if (rec && rec.encoder) cleanup(rec);
+  else if (rec?.audio) rec.audio.ctx.close();
+  rec = null;
+  renderControls();
+}
+
+function showResult(session, blob) {
+  if (resultUrl) URL.revokeObjectURL(resultUrl);
+  resultUrl = URL.createObjectURL(blob);
+
+  const { width, height } = session.config;
+  const raw = width * height * 1.5 * session.framesOut; // I420: 12 bits a pixel
+  const tracks = [`${session.codec.label} ${width}×${height}`];
+  if (session.audio) tracks.push(session.audio.codec.label);
+
+  $('playback').src = resultUrl;
+  $('download').href = resultUrl;
+  $('f-duration').textContent = `${session.duration.toFixed(1)} s`;
+  $('f-tracks').textContent = tracks.join(' + ');
+  $('f-size').textContent = formatBytes(blob.size);
+  $('f-raw').textContent = formatBytes(raw);
+  $('f-ratio').textContent = `${nf.format(Math.round(raw / blob.size))}× smaller`;
+  $('f-avg').textContent = `${nf.format(Math.round((blob.size * 8) / session.duration / 1000))} kbps`;
+  $('result').hidden = false;
+}
+
+/* ---------- Rendering ---------- */
+
+function renderControls() {
+  const busy = rec !== null;
+  const hasEncoder = 'VideoEncoder' in window;
+
+  document.querySelectorAll('.rail input[type=radio], .rail select, #bitrate').forEach((input) => {
+    input.disabled = busy || !hasEncoder;
+  });
+  $('codec').querySelectorAll('option').forEach((option) => {
+    option.disabled = !state.supported.has(option.value);
+  });
+
+  const record = $('record');
+  record.disabled = !hasEncoder || state.supported.size === 0 || (busy && rec.phase !== 'recording');
+  record.textContent = rec?.phase === 'recording' ? 'Stop' : rec ? 'Working…' : 'Record';
+  $('force').disabled = rec?.phase !== 'recording';
+
+  $('bitrate-val').textContent = `${nf.format(state.bitrate)} kbps`;
+  $('t-target').textContent = `target ${nf.format(state.bitrate)}`;
+  const [width, height] = SIZES[state.size];
+  $('r-format').textContent = `${codecInfo().label} · ${width}×${height} · ${FPS} fps · ${state.latency}`;
+  $('r-mode').textContent = rec?.phase === 'recording' ? 'Recording' : 'Preview';
+  $('r-dot').classList.toggle('on', rec?.phase === 'recording');
+}
+
+let lastReadings = 0;
+function renderReadings(now) {
+  if (now - lastReadings < 250) return;
+  lastReadings = now;
+  if (!rec?.encoder) {
+    $('r-queue').textContent = '–';
+    return;
+  }
+
+  const bits = rec.recent.reduce((sum, c) => sum + c.size, 0) * 8;
+  const latency = rec.latencies.length
+    ? rec.latencies.reduce((a, b) => a + b, 0) / rec.latencies.length
+    : null;
+
+  $('r-time').textContent = formatTime((now - rec.t0) / 1000);
+  $('r-queue').textContent = String(rec.encoder.encodeQueueSize);
+  $('t-frames').textContent = nf.format(rec.framesOut);
+  $('t-dropped').textContent = `${nf.format(rec.dropped)} dropped`;
+  $('t-bitrate').textContent = nf.format(Math.round(bits / 1000));
+  $('t-latency').textContent = latency === null ? '–' : latency.toFixed(1);
+  $('t-keys').textContent = nf.format(rec.keyCount);
+  $('t-ratio').textContent = rec.keyCount && rec.deltaCount
+    ? `${(rec.keyBytes / rec.keyCount / (rec.deltaBytes / rec.deltaCount)).toFixed(1)}× a delta frame`
+    : '–';
+}
+
+function resetReadings() {
+  $('r-time').textContent = '00:00.0';
+  ['t-frames', 't-keys'].forEach((id) => { $(id).textContent = '0'; });
+  ['t-bitrate', 't-latency', 't-ratio'].forEach((id) => { $(id).textContent = '–'; });
+  $('t-dropped').textContent = '0 dropped';
+  lastChunks = [];
+}
+
+let lastChunks = [];
+function renderTimeline() {
+  if (rec?.chunks) lastChunks = rec.chunks;
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.round(chunkCanvas.clientWidth * dpr);
+  const h = Math.round(chunkCanvas.clientHeight * dpr);
+  if (chunkCanvas.width !== w || chunkCanvas.height !== h) {
+    chunkCanvas.width = w;
+    chunkCanvas.height = h;
+  }
+  chunkCtx.clearRect(0, 0, w, h);
+
+  $('empty').hidden = lastChunks.length > 0;
+  if (!lastChunks.length) {
+    $('scale').textContent = '';
+    return;
+  }
+
+  const styles = getComputedStyle(document.documentElement);
+  const keyColor = styles.getPropertyValue('--c-key').trim();
+  const deltaColor = styles.getPropertyValue('--c-delta').trim();
+  const max = Math.max(...lastChunks.map((c) => c.size));
+  const slot = w / BARS;
+  const gap = Math.max(1, Math.round(slot * 0.25));
+  const top = 18 * dpr;
+
+  lastChunks.forEach((chunk, i) => {
+    const barHeight = Math.max(1, ((h - top) * chunk.size) / max);
+    chunkCtx.fillStyle = chunk.key ? keyColor : deltaColor;
+    chunkCtx.fillRect(i * slot, h - barHeight, Math.max(1, slot - gap), barHeight);
+  });
+  $('scale').textContent = `max ${formatBytes(max)}`;
+}
+
+function frame(now) {
+  if (state.source === 'camera' && camera) drawCamera(now);
+  else drawPattern(now);
+  captureFrame(now);
+  renderReadings(now);
+  if (rec?.phase === 'recording') renderTimeline();
+  requestAnimationFrame(frame);
+}
+
+/* ---------- Events ---------- */
+
+document.querySelectorAll('input[name=source]').forEach((input) => {
+  input.addEventListener('change', () => {
+    state.source = input.value;
+    if (state.source === 'camera') useCamera();
+    else {
+      stopCamera();
+      setStatus('Using the test pattern.');
+    }
+    renderControls();
+  });
+});
+
+document.querySelectorAll('input[name=size]').forEach((input) => {
+  input.addEventListener('change', () => {
+    state.size = Number(input.value);
+    resizeView();
+    checkCodecs();
+  });
+});
+
+document.querySelectorAll('input[name=latency]').forEach((input) => {
+  input.addEventListener('change', () => {
+    state.latency = input.value;
+    checkCodecs();
+  });
+});
+
+$('codec').addEventListener('change', (e) => {
+  state.codec = e.target.value;
+  renderControls();
+});
+
+$('bitrate').addEventListener('input', (e) => {
+  state.bitrate = Number(e.target.value);
+  renderControls();
+});
+$('bitrate').addEventListener('change', checkCodecs);
+
+$('keyevery').addEventListener('change', (e) => {
+  state.keyEvery = Number(e.target.value);
+});
+
+$('record').addEventListener('click', () => {
+  if (rec?.phase === 'recording') stopRecording();
+  else {
+    resetReadings();
+    renderTimeline();
+    startRecording();
+  }
+});
+
+$('force').addEventListener('click', () => {
+  if (rec?.phase === 'recording') rec.forceKey = true;
+});
+
+window.addEventListener('resize', renderTimeline);
+
+/* ---------- Start ---------- */
+
+resizeView();
+if (!('VideoEncoder' in window)) {
+  $('notice').hidden = false;
+  setStatus('This browser cannot encode video with WebCodecs.', 'bad');
+} else {
+  checkCodecs();
+  loadMuxer().catch(() => setStatus('The MP4 muxer could not be loaded. Check the network connection.', 'bad'));
+}
+renderControls();
+renderTimeline();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

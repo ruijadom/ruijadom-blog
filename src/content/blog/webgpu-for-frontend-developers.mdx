@@ -1,0 +1,525 @@
+---
+title: "WebGPU for Frontend Developers: Visualising WebRTC Call Quality"
+description: "WebGPU is now available in every major browser. This guide explains how it works by building a live view of WebRTC call quality, where every RTP packet is a particle moved by a compute shader."
+date: "2026-10-05"
+published: false
+author: "ruijadom"
+---
+
+For most of the web's history, the GPU has been a place where frontend code sends triangles. WebGL made 3D possible in the browser, but it was built for drawing, and anything that was not drawing had to be disguised as drawing.
+
+WebGPU changes that. It gives the browser a modern graphics API and a way to run general-purpose computation on the GPU. With Safari and Firefox shipping it in 2025, it is no longer a Chrome-only experiment.
+
+Most WebGPU tutorials build a spinning cube. This one builds something closer to product work: a live view of WebRTC call quality. Every RTP packet is a dot travelling from sender to receiver. Delay sets its speed, jitter makes the spacing uneven, and lost packets fall out of the stream. A compute shader moves all of them.
+
+<CodeSandbox
+  sandboxId="pr825r"
+  title="WebRTC Call Quality Lab"
+  height={980}
+  theme="dark"
+  options={{
+    fontsize: 12,
+    hidenavigation: false,
+    expanddevtools: true,
+    editorsize: 50
+  }}
+/>
+
+## What Is WebGPU?
+
+WebGPU is a browser API for talking to the graphics card. It is the successor to WebGL, designed around how modern GPUs and native APIs (Vulkan, Metal, Direct3D 12) work today.
+
+### WebGL vs WebGPU
+
+- **Compute shaders.** WebGL can only run code as part of drawing. WebGPU can run a program over a block of data with no drawing involved.
+- **Explicit state.** WebGL is a global state machine: a call changes hidden state that affects later calls. WebGPU uses immutable objects (pipelines, bind groups) that are validated once and reused.
+- **A new shading language.** Shaders are written in WGSL, a typed language with a syntax close to Rust and TypeScript.
+- **Asynchronous by design.** Getting a device, compiling pipelines and reading data back are all promise-based, so the main thread is not blocked.
+
+## Browser Support
+
+At the time of writing, WebGPU is available in:
+
+- **Chrome and Edge** 113 and later, on desktop. Android support starts with Chrome 121.
+- **Safari** 26 and later, on macOS, iOS and iPadOS.
+- **Firefox** 141 and later on Windows, with macOS following in later releases.
+
+Gaps remain: Firefox on Linux, older iPhones, locked-down enterprise machines and in-app browsers. Feature detection is not optional.
+
+```ts
+export async function getDevice(): Promise<GPUDevice | null> {
+  if (!('gpu' in navigator)) return null;
+
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) return null;
+
+  return adapter.requestDevice();
+}
+```
+
+Both checks are needed. A browser can expose `navigator.gpu` and still return no adapter, for example when hardware acceleration is turned off. For TypeScript, the `@webgpu/types` package provides the type definitions.
+
+## The Mental Model
+
+- **Adapter**: a physical GPU, as the browser sees it.
+- **Device**: a connection to that GPU. Everything else is created from it.
+- **Buffer**: a block of memory on the GPU.
+- **Shader module**: compiled WGSL code.
+- **Pipeline**: a shader plus the configuration it runs with. There are render pipelines and compute pipelines.
+- **Bind group**: the set of buffers and textures a shader can see while it runs.
+- **Pass**: a batch of work, recorded into a command encoder and submitted to the device's queue.
+
+Every frame follows the same shape: write the inputs, record one or more passes, submit.
+
+## The Problem: Seeing Call Quality
+
+The quality of a voice call over WebRTC comes down to three numbers.
+
+- **Round-trip time (RTT).** How long a packet takes to go out and come back. ITU-T G.114 recommends keeping one-way delay under 150 ms. Beyond that, people start talking over each other.
+- **Jitter.** How much the arrival time varies from packet to packet. The receiver hides it with a jitter buffer, which adds delay. A common rule of thumb is to stay under 30 ms.
+- **Packet loss.** The share of packets that never arrive. Codecs conceal small gaps, and a common target is under 1%.
+
+### Reading the Numbers
+
+WebRTC exposes all three through `getStats()`. On a live call, a single peer connection has everything needed.
+
+```ts
+export interface CallStats {
+  rttMs: number;
+  jitterMs: number;
+  received: number;
+  lost: number;
+}
+
+export async function readCallStats(pc: RTCPeerConnection): Promise<CallStats> {
+  const stats: CallStats = { rttMs: 0, jitterMs: 0, received: 0, lost: 0 };
+
+  (await pc.getStats()).forEach((report) => {
+    // What this side received from the network.
+    if (report.type === 'inbound-rtp' && report.kind === 'audio') {
+      stats.jitterMs = (report.jitter ?? 0) * 1000;
+      stats.received = report.packetsReceived ?? 0;
+      stats.lost = report.packetsLost ?? 0;
+    }
+    // What the far end reported about the packets this side sent.
+    if (report.type === 'remote-inbound-rtp' && report.roundTripTime !== undefined) {
+      stats.rttMs = report.roundTripTime * 1000;
+    }
+  });
+
+  return stats;
+}
+```
+
+`packetsReceived` and `packetsLost` are totals since the call started. To see what is happening now, poll once a second and work with the difference between two readings.
+
+### Turning Numbers into a Score
+
+Three numbers are hard to read at a glance, so telephony uses a single one: the Mean Opinion Score (MOS), from 1 to about 4.5. A widely used simplification of the ITU-T E-model estimates it from the same three inputs.
+
+```ts
+export function estimateMos(rttMs: number, jitterMs: number, lossPercent: number) {
+  const latency = rttMs / 2 + jitterMs * 2 + 10;
+  let r = latency < 160 ? 93.2 - latency / 40 : 93.2 - (latency - 120) / 10;
+  r = Math.max(0, Math.min(100, r - lossPercent * 2.5));
+  return 1 + 0.035 * r + 0.000007 * r * (r - 60) * (100 - r);
+}
+```
+
+Above 4.0 a call sounds good. Below 3.6 people start to notice, and below 3.1 the call is hard to follow. This is an estimate from network conditions, not a measurement of the audio itself.
+
+## Why the GPU?
+
+A fair question, because one voice call does not need it. An audio stream sends a packet every 20 ms, which is 50 packets a second. A 2D canvas draws that without effort.
+
+The picture changes at the scale of a contact centre. A supervisor view of 4,000 concurrent streams is 200,000 packets a second, each with its own delay, jitter and fate. Updating and drawing every one of them at 60 frames a second in JavaScript competes with everything else on the main thread. This is the shape of problem a GPU is built for: the same small operation, applied to a very large array, every frame.
+
+## Building It
+
+### One Packet, 32 Bytes
+
+Each packet is a fixed-size record. All of them live in one buffer that the compute shader updates and the renderer draws from.
+
+```wgsl
+struct Packet {
+  pos: vec2f,    // where to draw it, in clip space
+  clock: f32,    // 0..1 through this slot's send cycle
+  seed: u32,     // random state
+  delay: f32,    // seconds to cross the screen
+  late: f32,     // 0 = on time, 1 = too late to play
+  lost: f32,     // 1 if the network drops it
+  alpha: f32,
+}
+```
+
+The record mixes floats and an unsigned integer, so the JavaScript side writes it through two views of the same memory.
+
+```ts
+const PACKET_BYTES = 32;
+const raw = new ArrayBuffer(count * PACKET_BYTES);
+const floats = new Float32Array(raw);
+const ints = new Uint32Array(raw);
+
+for (let i = 0; i < count; i++) {
+  const o = i * 8;
+  floats[o + 2] = startingClock(i);                    // clock
+  ints[o + 3] = (Math.random() * 0xffffffff) >>> 0;    // seed
+  floats[o + 4] = initialDelay;                        // delay
+}
+
+const packetBuffer = device.createBuffer({
+  size: raw.byteLength,
+  usage:
+    GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+});
+device.queue.writeBuffer(packetBuffer, 0, raw);
+```
+
+The data is uploaded once. After that it never leaves the GPU.
+
+### The Compute Shader
+
+Each stream owns a fixed number of slots, and each slot sends a packet at a regular interval, the way a real encoder does. When a slot's clock wraps, it sends a new packet and decides its fate from the current network conditions: how much extra delay jitter adds, and whether the network drops it.
+
+```wgsl
+struct Sim {
+  dt: f32,         // seconds since the last frame
+  cycle: f32,      // seconds between two packets from the same slot
+  latency: f32,    // one-way network delay, in ms
+  jitter: f32,     // mean jitter, in ms
+  loss: f32,       // 0..1
+  slow: f32,       // slow-motion factor
+  streams: f32,
+  slots: f32,      // packets in flight per stream
+  size: vec2f,     // dot radius, in clip space
+  intensity: f32,
+}
+
+@group(0) @binding(0) var<uniform> sim: Sim;
+@group(0) @binding(1) var<storage, read_write> packets: array<Packet>;
+
+// PCG hash: a small, fast random number generator that works on the GPU.
+fn pcg(v: u32) -> u32 {
+  let state = v * 747796405u + 2891336453u;
+  let word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+  return (word >> 22u) ^ word;
+}
+
+fn unit(v: u32) -> f32 {
+  return f32(v >> 8u) / 16777216.0;
+}
+
+@compute @workgroup_size(64)
+fn step(@builtin(global_invocation_id) id: vec3u) {
+  let i = id.x;
+  if (i >= arrayLength(&packets)) {
+    return;
+  }
+
+  var p = packets[i];
+  p.clock += sim.dt / sim.cycle;
+
+  // The slot sends a new packet. Draw its fate from the current conditions.
+  if (p.clock >= 1.0) {
+    p.clock = fract(p.clock);
+
+    var seed = pcg(p.seed + i);
+    let extra = -log(max(unit(seed), 0.000001)) * sim.jitter;
+    seed = pcg(seed);
+    let dropped = unit(seed) < sim.loss;
+
+    p.seed = seed;
+    p.delay = min((sim.latency + extra) / 1000.0 * sim.slow, sim.cycle * 0.95);
+    p.late = clamp(extra / 60.0, 0.0, 1.0);
+    p.lost = select(0.0, 1.0, dropped);
+  }
+
+  // Progress along the path: 0 at the sender, 1 at the receiver.
+  let t = (p.clock * sim.cycle) / max(p.delay, 0.0001);
+  let stream = f32(i / u32(sim.slots));
+  let lane = ((stream + 0.5) / sim.streams) * 1.5 - 0.75;
+
+  var x = mix(-0.84, 0.84, min(t, 1.0));
+  var y = lane;
+  var alpha = select(1.0, 0.0, t >= 1.0);
+
+  // A lost packet leaves the stream part of the way across and fades out.
+  if (p.lost > 0.5) {
+    let dropAt = 0.2 + 0.6 * unit(pcg(p.seed));
+    if (t > dropAt) {
+      let fall = t - dropAt;
+      x = mix(-0.84, 0.84, dropAt) + fall * 0.08;
+      y = lane - fall * fall * 1.6;
+      alpha = clamp(1.0 - fall * 2.5, 0.0, 1.0);
+    }
+  }
+
+  p.pos = vec2f(x, y);
+  p.alpha = alpha;
+  packets[i] = p;
+}
+```
+
+A few details are worth a closer look.
+
+- **There is no `Math.random()` on the GPU.** Each packet carries its own seed and advances it with a hash function. PCG is a common choice because it is small and has good statistical quality.
+- **Jitter is drawn from an exponential distribution.** Most packets arrive close to on time and a few arrive much later, which is how jitter behaves on real networks.
+- **The bounds check is required.** The dispatch is rounded up to a whole number of workgroups, so the last group can run past the end of the array.
+- **Each invocation touches only its own packet.** That is what makes it safe to update the buffer in place with no locking.
+
+Real network delays are too short to see, so the simulation runs in slow motion. At 12 times slower, a 30 ms trip takes about a third of a second on screen.
+
+### The Pipelines
+
+The compute pipeline wraps the shader, and its bind group connects it to the uniforms and the packet buffer.
+
+```ts
+const computePipeline = device.createComputePipeline({
+  layout: 'auto',
+  compute: {
+    module: device.createShaderModule({ code: COMPUTE_WGSL }),
+    entryPoint: 'step',
+  },
+});
+
+const simValues = new Float32Array(12); // Sim: 44 bytes of fields, 48 with padding
+const simBuffer = device.createBuffer({
+  size: simValues.byteLength,
+  usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+});
+
+const computeBindGroup = device.createBindGroup({
+  layout: computePipeline.getBindGroupLayout(0),
+  entries: [
+    { binding: 0, resource: { buffer: simBuffer } },
+    { binding: 1, resource: { buffer: packetBuffer } },
+  ],
+});
+```
+
+The render pipeline reads the same buffer as per-instance data. Each packet becomes one small quad, and the fragment shader trims it to a circle and colors it: teal on time, amber late, red lost.
+
+```ts
+const renderPipeline = device.createRenderPipeline({
+  layout: 'auto',
+  vertex: {
+    module: renderModule,
+    entryPoint: 'vs',
+    buffers: [
+      {
+        arrayStride: 32,
+        stepMode: 'instance',
+        attributes: [
+          { shaderLocation: 0, offset: 0, format: 'float32x2' },  // pos
+          { shaderLocation: 1, offset: 20, format: 'float32x3' }, // late, lost, alpha
+        ],
+      },
+    ],
+  },
+  fragment: {
+    module: renderModule,
+    entryPoint: 'fs',
+    targets: [
+      {
+        format,
+        blend: {
+          color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+          alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+        },
+      },
+    ],
+  },
+  primitive: { topology: 'triangle-list' },
+});
+```
+
+The `offset` values point into the 32-byte record: position starts at byte 0, and the three values the renderer needs for color start at byte 20.
+
+### The Frame Loop
+
+Each frame writes the current network conditions, runs the compute pass, then draws.
+
+```ts
+function frame() {
+  simValues.set([
+    dt, CYCLE, rttMs / 2, jitterMs, lossPercent / 100, SLOW,
+    streams, SLOTS,
+    dotWidth, dotHeight,
+    intensity,
+  ]);
+  device.queue.writeBuffer(simBuffer, 0, simValues);
+
+  const encoder = device.createCommandEncoder();
+
+  const compute = encoder.beginComputePass();
+  compute.setPipeline(computePipeline);
+  compute.setBindGroup(0, computeBindGroup);
+  compute.dispatchWorkgroups(Math.ceil(packetCount / 64));
+  compute.end();
+
+  const render = encoder.beginRenderPass({
+    colorAttachments: [
+      {
+        view: context.getCurrentTexture().createView(),
+        clearValue: { r: 0.016, g: 0.031, b: 0.039, a: 1 },
+        loadOp: 'clear',
+        storeOp: 'store',
+      },
+    ],
+  });
+  render.setPipeline(renderPipeline);
+  render.setBindGroup(0, renderBindGroup);
+  render.setVertexBuffer(0, packetBuffer);
+  render.draw(6, packetCount); // six vertices per quad, one quad per packet
+  render.end();
+
+  device.queue.submit([encoder.finish()]);
+  requestAnimationFrame(frame);
+}
+```
+
+The only data crossing from JavaScript to the GPU each frame is 48 bytes of uniforms. The readings from `getStats()` go straight into those uniforms, so the picture follows the call: when loss rises, new packets start to fall.
+
+## Measuring a Real Connection
+
+The playground can feed the visualisation from a real peer connection instead of sliders. It sets up a test call between two peer connections on the same page, with a generated tone in place of the microphone so no permission prompt is needed.
+
+```ts
+const sender = new RTCPeerConnection(config);
+const receiver = new RTCPeerConnection(config);
+sender.onicecandidate = (e) => e.candidate && receiver.addIceCandidate(e.candidate);
+receiver.onicecandidate = (e) => e.candidate && sender.addIceCandidate(e.candidate);
+
+const audio = new AudioContext();
+const tone = audio.createOscillator();
+const sink = audio.createMediaStreamDestination();
+tone.connect(sink);
+tone.start();
+sender.addTrack(sink.stream.getAudioTracks()[0], sink.stream);
+
+const offer = await sender.createOffer();
+await sender.setLocalDescription(offer);
+await receiver.setRemoteDescription(offer);
+const answer = await receiver.createAnswer();
+await receiver.setLocalDescription(answer);
+await sender.setRemoteDescription(answer);
+```
+
+There is an important limit to this. With no configuration, both ends find each other directly and the packets never leave the device. The numbers come back near perfect because they measure the browser, not the network.
+
+To test a real path, the media has to be forced through a TURN server, so it travels out to the internet and back.
+
+```ts
+const config: RTCConfiguration = {
+  iceServers: [{ urls: 'turn:turn.example.com:3478', username, credential }],
+  iceTransportPolicy: 'relay',
+};
+```
+
+This is how pre-call network tests work in production: a short relayed call, a few seconds of statistics, and a verdict before the user joins the real one.
+
+## Using It in React
+
+WebGPU setup is asynchronous and owns resources that must be released, so it belongs in an effect with a cleanup function.
+
+```tsx
+import { useEffect, useRef, useState } from 'react';
+
+type Status = 'loading' | 'ready' | 'unsupported';
+
+export function PacketStream({ stats }: { stats: NetworkConditions }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const statsRef = useRef(stats);
+  const [status, setStatus] = useState<Status>('loading');
+
+  // Keep the latest readings in a ref so the frame loop never re-renders React.
+  useEffect(() => {
+    statsRef.current = stats;
+  }, [stats]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let frameId = 0;
+    let device: GPUDevice | undefined;
+
+    async function start() {
+      const adapter = await navigator.gpu?.requestAdapter();
+      if (!adapter) {
+        if (!cancelled) setStatus('unsupported');
+        return;
+      }
+
+      device = await adapter.requestDevice();
+      if (cancelled || !canvasRef.current) {
+        device.destroy();
+        return;
+      }
+
+      const context = canvasRef.current.getContext('webgpu')!;
+      context.configure({
+        device,
+        format: navigator.gpu.getPreferredCanvasFormat(),
+      });
+
+      const stream = createPacketStream(device, context);
+      setStatus('ready');
+
+      const loop = () => {
+        stream.frame(statsRef.current);
+        frameId = requestAnimationFrame(loop);
+      };
+      frameId = requestAnimationFrame(loop);
+    }
+
+    start();
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frameId);
+      device?.destroy();
+    };
+  }, []);
+
+  if (status === 'unsupported') {
+    return <p>WebGPU is not available in this browser.</p>;
+  }
+
+  return <canvas ref={canvasRef} aria-label="Packets travelling from sender to receiver" />;
+}
+```
+
+Here `createPacketStream` wraps the pipeline setup and the frame function from the previous section. The `cancelled` flag covers the case where the component unmounts while the device is still being requested, including the double invocation of effects in Strict Mode during development. The readings arrive as props once a second, but the frame loop reads them from a ref, so sixty frames a second never turn into sixty renders.
+
+## Should You Use WebGPU?
+
+### Use WebGPU When
+
+- The same operation runs over a very large array every frame: packets, particles, large data visualisations, image or video filters.
+- The work is blocking the main thread and a Web Worker is not enough.
+- A model needs to run on the device, for privacy, cost or offline use. Libraries such as Transformers.js and WebLLM use WebGPU as their backend.
+- A 3D project is starting today. Three.js and Babylon.js both ship WebGPU renderers, and Three.js falls back to WebGL 2 automatically.
+
+### Avoid WebGPU When
+
+- The interface is forms, tables and text. The DOM and CSS are the right tools, and CSS transform and opacity animations are already composited on the GPU.
+- The dataset is small. One call, or a few dozen, is a job for a 2D canvas or SVG.
+- The audience includes many older devices or in-app browsers and there is no budget for a fallback path.
+- The result is needed back in JavaScript every frame. Reading from the GPU is asynchronous and slow compared to writing.
+
+### The Pragmatic Approach
+
+Treat WebGPU as a progressive enhancement. In this example the numbers and the score do not depend on it at all. Without WebGPU, the page still reads the statistics and shows the estimated quality. The packet view is the part that is added when the browser can do it.
+
+## Common Pitfalls
+
+- **Struct alignment.** WGSL lays out structs by alignment rules that are easy to get wrong. The `Sim` struct above has 44 bytes of fields and occupies 48, because a struct containing a `vec2f` is padded to a multiple of 8. A `vec3f` is aligned to 16 bytes, which catches almost everyone once.
+- **Mixed types in one buffer.** A record with both `f32` and `u32` fields needs two typed-array views on the JavaScript side. Writing an integer seed through a `Float32Array` silently corrupts it.
+- **Everything is asynchronous.** Adapter, device and buffer readback all return promises. Structure the code around that from the start.
+- **Devices can be lost.** A driver crash, or the system reclaiming GPU resources, can invalidate the device. Listen to `device.lost` and rebuild.
+- **Validation errors are quiet.** A mistake often produces a console warning and a blank canvas, not an exception. Use `device.pushErrorScope()` during development.
+
+## Conclusion
+
+WebGPU is not a replacement for the DOM, and most interfaces will never need it. What it adds is a second place to run code: one that is very good at applying the same operation to a very large number of values at once.
+
+The call quality view shows the pattern in a small, practical form. Keep the data on the GPU, describe the work as a shader, and send only a few bytes of input per frame. The same three numbers that describe a call (round-trip time, jitter and loss) drive both a score a person can read and a picture of hundreds of thousands of packets. The practical step for a frontend team is to learn the pattern on something small, measure it on real devices, and keep the page useful in the browsers that are not there yet.

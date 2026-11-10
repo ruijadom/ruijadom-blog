@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WebRTC Call Quality Lab</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one instrument. A dark stage where packets travel from sender to receiver,
+   a control rail beside it (below it on narrow screens), then the readings and the shader. */
+:root{
+  --bg:#f2f6f5; --surface:#ffffff; --ink:#152120; --muted:#5a6a68; --line:#d3dedb;
+  --accent:#12736c; --good:#12736c; --warn:#a85f0a; --bad:#b3382c;
+  --stage:#060b0c; --stage-ink:#cfe4e0; --stage-dim:#7f9a96; --stage-line:#1d2c2b;
+  --p-ok:#2ecbb8; --p-late:#ffad40; --p-lost:#ff4d4d;
+  --sans:"Instrument Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d1413; --surface:#141d1c; --ink:#e3eeec; --muted:#93a5a2; --line:#273533;
+    --accent:#52c7bb; --good:#52c7bb; --warn:#f0aa4c; --bad:#ff7b6e;
+    --stage:#04080a; --stage-ink:#cfe4e0; --stage-dim:#7f9a96; --stage-line:#1d2c2b;
+    --p-ok:#2ecbb8; --p-late:#ffad40; --p-lost:#ff4d4d;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d1413; --surface:#141d1c; --ink:#e3eeec; --muted:#93a5a2; --line:#273533;
+  --accent:#52c7bb; --good:#52c7bb; --warn:#f0aa4c; --bad:#ff7b6e;
+  --stage:#04080a; --stage-ink:#cfe4e0; --stage-dim:#7f9a96; --stage-line:#1d2c2b;
+  --p-ok:#2ecbb8; --p-late:#ffad40; --p-lost:#ff4d4d;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:20px;padding-block:28px 48px;display:flex;flex-direction:column;gap:22px}
+h1{margin:0;font-size:clamp(26px,4vw,36px);line-height:1.1;font-weight:700;letter-spacing:-.02em;text-wrap:balance}
+h2{margin:0;font-size:17px;font-weight:600;letter-spacing:-.005em}
+.lede{margin:8px 0 0;max-width:64ch;color:var(--muted)}
+.lab{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:18px;align-items:start}
+@media (max-width:780px){.lab{grid-template-columns:minmax(0,1fr)}}
+
+/* Stage */
+.stage{position:relative;background:var(--stage);border-radius:10px;overflow:hidden;aspect-ratio:16/10;max-width:100%}
+.stage canvas{display:block;width:100%;height:100%}
+.end{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed var(--stage-line);pointer-events:none}
+.end.tx{left:8%}.end.rx{left:92%}
+.end span{position:absolute;top:50%;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--stage-dim);writing-mode:vertical-rl;transform:translate(-150%,-50%) rotate(180deg);white-space:nowrap}
+.end.rx span{transform:translate(50%,-50%)}
+.read{position:absolute;font-family:var(--mono);font-size:12px;color:var(--stage-ink);pointer-events:none;
+  font-variant-numeric:tabular-nums;line-height:1.35}
+.read small{display:block;color:var(--stage-dim);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
+.read.tl{top:12px;left:14px}.read.tr{top:12px;right:14px;text-align:right}
+.read.bl{bottom:12px;left:14px;color:var(--stage-dim)}
+.key{position:absolute;bottom:12px;right:14px;display:flex;gap:12px;flex-wrap:wrap;justify-content:flex-end;
+  font-family:var(--mono);font-size:11px;color:var(--stage-dim);pointer-events:none}
+.key i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}
+.key .ok{background:var(--p-ok)}.key .late{background:var(--p-late)}.key .lost{background:var(--p-lost)}
+.notice{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;gap:8px;
+  padding:24px 13%;color:var(--stage-ink);background:var(--stage)}
+.notice strong{font-size:18px;font-weight:600}
+.notice p{margin:0;max-width:52ch;color:var(--stage-dim)}
+
+/* Controls */
+.rail{display:flex;flex-direction:column;gap:16px}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field > label,.legend{font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+fieldset{border:0;margin:0;padding:0;min-width:0;display:flex;flex-direction:column;gap:7px}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg label{position:relative;display:block;text-align:center;padding:9px 6px;font-size:13.5px;font-weight:500;cursor:pointer;color:var(--muted)}
+.seg input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.seg label:has(input:checked){background:var(--accent);color:var(--surface);font-weight:600}
+.seg label:has(input:focus-visible){outline:2px solid var(--ink);outline-offset:-3px}
+.row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.val{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;margin:0;accent-color:var(--accent)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+button{font:inherit;font-size:13px;font-weight:500;padding:7px 11px;border-radius:8px;border:1px solid var(--line);
+  background:var(--surface);color:var(--ink);cursor:pointer}
+button:hover{border-color:var(--muted)}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+button:disabled,input:disabled{opacity:.5;cursor:not-allowed}
+.hint{margin:0;font-size:13px;color:var(--muted)}
+.status{margin:0;font-size:13px;color:var(--ink);border-left:3px solid var(--accent);padding-left:10px}
+details{font-size:13px}
+summary{cursor:pointer;color:var(--muted);font-weight:500}
+.turn{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.turn input{font:inherit;font-size:13px;padding:7px 9px;border-radius:7px;border:1px solid var(--line);background:var(--surface);color:var(--ink);min-width:0;width:100%}
+
+/* Readings */
+.meas{display:flex;flex-direction:column;gap:10px}
+.tiles{display:grid;grid-template-columns:1.25fr repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:760px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:13px 15px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.tile .who{font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.tile .num{font-family:var(--mono);font-size:25px;font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:-.02em;line-height:1.2}
+.tile .num span{font-size:13px;color:var(--muted);margin-left:4px;letter-spacing:0}
+.tile .num b{font-weight:500}
+.tile .sub{font-size:13px;color:var(--muted)}
+.grade{font-weight:600}
+.grade[data-level="good"]{color:var(--good)}
+.grade[data-level="warn"]{color:var(--warn)}
+.grade[data-level="bad"]{color:var(--bad)}
+
+/* Shader */
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>WebRTC Call Quality Lab</h1>
+    <p class="lede">Every dot is an RTP packet on its way from sender to receiver. Delay sets its speed, jitter makes the spacing uneven, and lost packets fall out of the stream. A WebGPU compute shader moves them all.</p>
+  </header>
+
+  <section class="lab" aria-label="Packet stream">
+    <div class="stage" id="stage">
+      <canvas id="view" aria-label="Packets travelling from sender to receiver"></canvas>
+      <div class="end tx"><span>Sender</span></div>
+      <div class="end rx"><span>Receiver</span></div>
+      <div class="read tl"><small>Packets a second</small><span id="r-count">–</span></div>
+      <div class="read tr"><small>Frame</small><span id="r-frame">–</span></div>
+      <div class="read bl">Slowed 12×</div>
+      <div class="key"><span><i class="ok"></i>on time</span><span><i class="late"></i>late</span><span><i class="lost"></i>lost</span></div>
+      <div class="notice" id="notice" hidden>
+        <strong id="notice-title">WebGPU is not available in this browser</strong>
+        <p id="notice-text">It ships in Chrome and Edge 113 or later, Safari 26 or later, and Firefox 141 or later on Windows. The readings below still work.</p>
+      </div>
+    </div>
+
+    <div class="rail">
+      <fieldset>
+        <span class="legend" id="lg-source">Network conditions</span>
+        <div class="seg" role="radiogroup" aria-labelledby="lg-source">
+          <label><input type="radio" name="source" id="src-sim" value="sim" checked>Simulate</label>
+          <label><input type="radio" name="source" id="src-live" value="live">Measure</label>
+        </div>
+      </fieldset>
+
+      <div id="sim-controls" class="rail">
+        <div class="chips" aria-label="Presets">
+          <button type="button" data-preset="30,3,0">Office fibre</button>
+          <button type="button" data-preset="60,12,0.5">Home Wi-Fi</button>
+          <button type="button" data-preset="140,30,2">Mobile 4G</button>
+          <button type="button" data-preset="350,60,8">Congested</button>
+        </div>
+      </div>
+
+      <div id="live-controls" class="rail" hidden>
+        <p class="status" id="live-status">Connecting…</p>
+        <details>
+          <summary>Test a real network path with a TURN server</summary>
+          <div class="turn">
+            <input type="text" id="turn-url" placeholder="turn:turn.example.com:3478" aria-label="TURN server URL" autocomplete="off">
+            <input type="text" id="turn-user" placeholder="Username" aria-label="TURN username" autocomplete="off">
+            <input type="password" id="turn-pass" placeholder="Credential" aria-label="TURN credential" autocomplete="off">
+            <button type="button" id="turn-apply">Reconnect through TURN</button>
+          </div>
+        </details>
+      </div>
+
+      <div class="field">
+        <div class="row"><label for="rtt">Round-trip time</label><span class="val" id="v-rtt">60 ms</span></div>
+        <input type="range" id="rtt" min="0" max="800" step="5" value="60">
+      </div>
+      <div class="field">
+        <div class="row"><label for="jitter">Jitter</label><span class="val" id="v-jitter">12 ms</span></div>
+        <input type="range" id="jitter" min="0" max="100" step="1" value="12">
+      </div>
+      <div class="field">
+        <div class="row"><label for="loss">Packet loss</label><span class="val" id="v-loss">0.5%</span></div>
+        <input type="range" id="loss" min="0" max="30" step="0.5" value="0.5">
+      </div>
+      <div class="field">
+        <div class="row"><label for="streams">Streams</label><span class="val" id="v-streams">256</span></div>
+        <input type="range" id="streams" min="0" max="6" step="1" value="4">
+        <p class="hint">One audio stream sends 50 packets a second. A contact centre carries thousands of streams at once.</p>
+      </div>
+
+      <div class="chips"><button type="button" id="toggle">Pause</button></div>
+    </div>
+  </section>
+
+  <section class="meas" aria-label="Readings">
+    <h2 id="m-title">Simulated conditions</h2>
+    <div class="tiles">
+      <div class="tile">
+        <div class="who">Estimated call quality</div>
+        <div class="num"><b id="m-mos">–</b><span>MOS, out of 4.5</span></div>
+        <div class="sub"><span class="grade" id="m-grade" data-level="good">–</span> <span id="m-grade-text"></span></div>
+      </div>
+      <div class="tile"><div class="who">Round-trip time</div><div class="num" id="m-rtt">–</div><div class="sub" id="m-rtt-sub">&nbsp;</div></div>
+      <div class="tile"><div class="who">Jitter</div><div class="num" id="m-jitter">–</div><div class="sub" id="m-jitter-sub">&nbsp;</div></div>
+      <div class="tile"><div class="who">Packet loss</div><div class="num" id="m-loss">–</div><div class="sub" id="m-loss-sub">&nbsp;</div></div>
+    </div>
+    <p class="hint">MOS is estimated with a simplified E-model from round-trip time, jitter and loss. It is a guide to how a voice call would sound, not a measurement of audio.</p>
+  </section>
+
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* ---------- Shaders ---------- */
+
+const SHARED_WGSL = /* wgsl */ `
+struct Packet {
+  pos: vec2f,    // where to draw it, in clip space
+  clock: f32,    // 0..1 through this slot's send cycle
+  seed: u32,     // random state
+  delay: f32,    // seconds to cross the screen
+  late: f32,     // 0 = on time, 1 = too late to play
+  lost: f32,     // 1 if the network drops it
+  alpha: f32,
+}
+
+struct Sim {
+  dt: f32,         // seconds since the last frame
+  cycle: f32,      // seconds between two packets from the same slot
+  latency: f32,    // one-way network delay, in ms
+  jitter: f32,     // mean jitter, in ms
+  loss: f32,       // 0..1
+  slow: f32,       // slow-motion factor
+  streams: f32,
+  slots: f32,      // packets in flight per stream
+  size: vec2f,     // dot radius, in clip space
+  intensity: f32,
+}
+`;
+
+const COMPUTE_WGSL = SHARED_WGSL + /* wgsl */ `
+@group(0) @binding(0) var<uniform> sim: Sim;
+@group(0) @binding(1) var<storage, read_write> packets: array<Packet>;
+
+// PCG hash: a small, fast random number generator that works on the GPU.
+fn pcg(v: u32) -> u32 {
+  let state = v * 747796405u + 2891336453u;
+  let word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+  return (word >> 22u) ^ word;
+}
+
+fn unit(v: u32) -> f32 {
+  return f32(v >> 8u) / 16777216.0;
+}
+
+@compute @workgroup_size(64)
+fn step(@builtin(global_invocation_id) id: vec3u) {
+  let i = id.x;
+  if (i >= arrayLength(&packets)) {
+    return;
+  }
+
+  var p = packets[i];
+  p.clock += sim.dt / sim.cycle;
+
+  // The slot sends a new packet. Draw its fate from the current conditions.
+  if (p.clock >= 1.0) {
+    p.clock = fract(p.clock);
+
+    var seed = pcg(p.seed + i);
+    let extra = -log(max(unit(seed), 0.000001)) * sim.jitter;
+    seed = pcg(seed);
+    let dropped = unit(seed) < sim.loss;
+
+    p.seed = seed;
+    p.delay = min((sim.latency + extra) / 1000.0 * sim.slow, sim.cycle * 0.95);
+    p.late = clamp(extra / 60.0, 0.0, 1.0);
+    p.lost = select(0.0, 1.0, dropped);
+  }
+
+  // Progress along the path: 0 at the sender, 1 at the receiver.
+  let t = (p.clock * sim.cycle) / max(p.delay, 0.0001);
+  let stream = f32(i / u32(sim.slots));
+  let lane = ((stream + 0.5) / sim.streams) * 1.5 - 0.75;
+
+  var x = mix(-0.84, 0.84, min(t, 1.0));
+  var y = lane;
+  var alpha = select(1.0, 0.0, t >= 1.0);
+
+  // A lost packet leaves the stream part of the way across and fades out.
+  if (p.lost > 0.5) {
+    let dropAt = 0.2 + 0.6 * unit(pcg(p.seed));
+    if (t > dropAt) {
+      let fall = t - dropAt;
+      x = mix(-0.84, 0.84, dropAt) + fall * 0.08;
+      y = lane - fall * fall * 1.6;
+      alpha = clamp(1.0 - fall * 2.5, 0.0, 1.0);
+    }
+  }
+
+  p.pos = vec2f(x, y);
+  p.alpha = alpha;
+  packets[i] = p;
+}
+`;
+
+const RENDER_WGSL = SHARED_WGSL + /* wgsl */ `
+@group(0) @binding(0) var<uniform> sim: Sim;
+
+struct VertexOut {
+  @builtin(position) position: vec4f,
+  @location(0) uv: vec2f,
+  @location(1) look: vec3f,
+}
+
+@vertex
+fn vs(
+  @builtin(vertex_index) vertex: u32,
+  @location(0) pos: vec2f,
+  @location(1) look: vec3f,   // late, lost, alpha
+) -> VertexOut {
+  var corners = array<vec2f, 6>(
+    vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0),
+    vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0),
+  );
+  let corner = corners[vertex];
+
+  var out: VertexOut;
+  out.position = vec4f(pos + corner * sim.size, 0.0, 1.0);
+  out.uv = corner;
+  out.look = look;
+  return out;
+}
+
+@fragment
+fn fs(in: VertexOut) -> @location(0) vec4f {
+  let d = dot(in.uv, in.uv);
+  if (d > 1.0) {
+    discard;
+  }
+  let onTime = vec3f(0.18, 0.80, 0.72);
+  let late = vec3f(1.00, 0.68, 0.25);
+  let lost = vec3f(1.00, 0.30, 0.30);
+  let color = mix(mix(onTime, late, in.look.x), lost, in.look.y);
+  return vec4f(color * in.look.z * (1.0 - d) * sim.intensity, 1.0);
+}
+`;
+
+/* ---------- Call quality ---------- */
+
+// Simplified E-model: turns network readings into an estimated Mean Opinion Score.
+function estimateMos(rttMs, jitterMs, lossPercent) {
+  const latency = rttMs / 2 + jitterMs * 2 + 10;
+  let r = latency < 160 ? 93.2 - latency / 40 : 93.2 - (latency - 120) / 10;
+  r = Math.max(0, Math.min(100, r - lossPercent * 2.5));
+  return 1 + 0.035 * r + 0.000007 * r * (r - 60) * (100 - r);
+}
+
+function grade(mos) {
+  if (mos >= 4.3) return ['Excellent', 'good', 'Clear, natural conversation.'];
+  if (mos >= 4.0) return ['Good', 'good', 'Most people notice nothing.'];
+  if (mos >= 3.6) return ['Fair', 'warn', 'Some people notice delay or glitches.'];
+  if (mos >= 3.1) return ['Poor', 'warn', 'Many people find the call annoying.'];
+  return ['Bad', 'bad', 'Hard to hold a conversation.'];
+}
+
+/* ---------- Page wiring ---------- */
+
+const $ = (id) => document.getElementById(id);
+const fmt = new Intl.NumberFormat('en-US');
+const STREAMS = [1, 4, 16, 64, 256, 1024, 4096];
+const SLOTS = 64;                 // packets in flight per stream
+const PACKET_BYTES = 32;
+const PACKET_INTERVAL = 0.02;     // 20 ms between audio packets
+const SLOW = 12;
+const CYCLE = SLOTS * PACKET_INTERVAL * SLOW;
+
+const canvas = $('view');
+const state = {
+  source: 'sim',
+  rtt: 60, jitter: 12, loss: 0.5,   // ms, ms, percent
+  streams: STREAMS[4],
+  running: !matchMedia('(prefers-reduced-motion: reduce)').matches,
+};
+
+function renderReadings() {
+  const mos = estimateMos(state.rtt, state.jitter, state.loss);
+  const [label, level, text] = grade(mos);
+  $('m-mos').textContent = mos.toFixed(1);
+  $('m-grade').textContent = label + '.';
+  $('m-grade').dataset.level = level;
+  $('m-grade-text').textContent = text;
+  $('m-rtt').innerHTML = Math.round(state.rtt) + '<span>ms</span>';
+  $('m-jitter').innerHTML = state.jitter.toFixed(state.jitter < 10 ? 1 : 0) + '<span>ms</span>';
+  $('m-loss').innerHTML = state.loss.toFixed(1) + '<span>%</span>';
+  $('m-rtt-sub').textContent = state.rtt <= 150 ? 'Feels instant' : state.rtt <= 300 ? 'Noticeable delay' : 'People talk over each other';
+  $('m-jitter-sub').textContent = state.jitter <= 20 ? 'Absorbed by the jitter buffer' : state.jitter <= 40 ? 'Buffer has to grow' : 'Audio breaks up';
+  $('m-loss-sub').textContent = state.loss <= 1 ? 'Concealed by the codec' : state.loss <= 5 ? 'Audible glitches' : 'Words go missing';
+  $('v-rtt').textContent = Math.round(state.rtt) + ' ms';
+  $('v-jitter').textContent = Math.round(state.jitter) + ' ms';
+  $('v-loss').textContent = state.loss.toFixed(1) + '%';
+  $('v-streams').textContent = fmt.format(state.streams);
+  $('r-count').textContent = fmt.format(state.streams / PACKET_INTERVAL);
+  $('rtt').value = state.rtt; $('jitter').value = state.jitter; $('loss').value = state.loss;
+  $('m-title').textContent = state.source === 'sim' ? 'Simulated conditions' : 'Measured in this browser';
+}
+
+function showNotice(title, text) {
+  $('notice-title').textContent = title;
+  if (text) $('notice-text').textContent = text;
+  $('notice').hidden = false;
+  $('streams').disabled = true;
+  $('toggle').disabled = true;
+}
+
+/* ---------- Measuring a real connection ---------- */
+
+const live = { a: null, b: null, audio: null, timer: 0, prev: null };
+
+function stopLive() {
+  clearInterval(live.timer);
+  if (live.a) live.a.close();
+  if (live.b) live.b.close();
+  if (live.audio) live.audio.close();
+  live.a = live.b = live.audio = live.prev = null;
+}
+
+async function startLive() {
+  stopLive();
+  const status = $('live-status');
+  if (typeof RTCPeerConnection === 'undefined') {
+    status.textContent = 'WebRTC is not available here.';
+    return;
+  }
+
+  const url = $('turn-url').value.trim();
+  const config = url
+    ? { iceServers: [{ urls: url, username: $('turn-user').value, credential: $('turn-pass').value }], iceTransportPolicy: 'relay' }
+    : {};
+
+  try {
+    status.textContent = 'Connecting…';
+    const a = new RTCPeerConnection(config);
+    const b = new RTCPeerConnection(config);
+    live.a = a; live.b = b;
+    a.onicecandidate = (e) => { if (e.candidate) b.addIceCandidate(e.candidate).catch(() => {}); };
+    b.onicecandidate = (e) => { if (e.candidate) a.addIceCandidate(e.candidate).catch(() => {}); };
+
+    // A generated tone stands in for the microphone, so no permission is needed.
+    const audio = new AudioContext();
+    live.audio = audio;
+    const tone = audio.createOscillator();
+    const sink = audio.createMediaStreamDestination();
+    tone.connect(sink);
+    tone.start();
+    a.addTrack(sink.stream.getAudioTracks()[0], sink.stream);
+
+    const offer = await a.createOffer();
+    await a.setLocalDescription(offer);
+    await b.setRemoteDescription(offer);
+    const answer = await b.createAnswer();
+    await b.setLocalDescription(answer);
+    await a.setRemoteDescription(answer);
+
+    const relayed = Boolean(url);
+    live.timer = setInterval(() => readStats(a, b, relayed).catch(() => {}), 1000);
+    setTimeout(() => {
+      if (live.a === a && a.connectionState !== 'connected') {
+        status.textContent = relayed
+          ? 'Could not connect through that TURN server. Check the address and credentials.'
+          : 'The test call could not connect. WebRTC may be blocked in this view. Open the page on its own to measure.';
+      }
+    }, 6000);
+  } catch (err) {
+    status.textContent = 'The test call could not start: ' + (err && err.message || err);
+  }
+}
+
+async function readStats(sender, receiver, relayed) {
+  let jitterMs, received, lost, rttMs, pairRttMs;
+
+  (await receiver.getStats()).forEach((r) => {
+    if (r.type === 'inbound-rtp' && r.kind === 'audio') {
+      jitterMs = (r.jitter || 0) * 1000;
+      received = r.packetsReceived || 0;
+      lost = r.packetsLost || 0;
+    }
+  });
+  (await sender.getStats()).forEach((r) => {
+    if (r.type === 'remote-inbound-rtp' && r.roundTripTime !== undefined) rttMs = r.roundTripTime * 1000;
+    if (r.type === 'candidate-pair' && r.nominated && r.currentRoundTripTime !== undefined) pairRttMs = r.currentRoundTripTime * 1000;
+  });
+  if (received === undefined || live.a !== sender) return;
+
+  // Loss over the last interval, not since the start of the call.
+  let lossPercent = 0;
+  if (live.prev) {
+    const dLost = Math.max(0, lost - live.prev.lost);
+    const dReceived = Math.max(0, received - live.prev.received);
+    if (dLost + dReceived > 0) lossPercent = (dLost / (dLost + dReceived)) * 100;
+  }
+  live.prev = { lost, received };
+
+  state.rtt = Math.min(800, rttMs !== undefined ? rttMs : pairRttMs || 0);
+  state.jitter = Math.min(100, jitterMs);
+  state.loss = Math.min(30, lossPercent);
+  renderReadings();
+  $('live-status').textContent = relayed
+    ? 'Measuring a test call relayed through your TURN server. ' + fmt.format(received) + ' packets received.'
+    : 'Measuring a test call inside this browser. ' + fmt.format(received) + ' packets received. Without a TURN server the packets never leave this device, so expect near-perfect numbers.';
+}
+
+function setSource(source) {
+  state.source = source;
+  const isLive = source === 'live';
+  $('sim-controls').hidden = isLive;
+  $('live-controls').hidden = !isLive;
+  for (const id of ['rtt', 'jitter', 'loss']) $(id).disabled = isLive;
+  if (isLive) startLive(); else stopLive();
+  renderReadings();
+}
+
+for (const input of document.querySelectorAll('input[name="source"]')) {
+  input.addEventListener('change', () => setSource(input.value));
+}
+$('turn-apply').addEventListener('click', startLive);
+for (const button of document.querySelectorAll('[data-preset]')) {
+  button.addEventListener('click', () => {
+    [state.rtt, state.jitter, state.loss] = button.dataset.preset.split(',').map(Number);
+    renderReadings();
+  });
+}
+$('rtt').addEventListener('input', (e) => { state.rtt = Number(e.target.value); renderReadings(); });
+$('jitter').addEventListener('input', (e) => { state.jitter = Number(e.target.value); renderReadings(); });
+$('loss').addEventListener('input', (e) => { state.loss = Number(e.target.value); renderReadings(); });
+
+/* ---------- WebGPU ---------- */
+
+async function main() {
+  if (!navigator.gpu) return showNotice('WebGPU is not available in this browser');
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) return showNotice('No GPU adapter was found', 'The browser supports WebGPU, but it could not reach a graphics device. Hardware acceleration may be turned off. The readings below still work.');
+  const device = await adapter.requestDevice();
+  device.lost.then((info) => showNotice('The GPU device was lost', info.message || 'Reload the page to start again.'));
+
+  const context = canvas.getContext('webgpu');
+  const format = navigator.gpu.getPreferredCanvasFormat();
+  context.configure({ device, format, alphaMode: 'opaque' });
+
+  const maxPackets = Math.floor(Math.min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize) / PACKET_BYTES);
+  const streamOptions = STREAMS.filter((s) => s * SLOTS <= maxPackets);
+  $('streams').max = String(streamOptions.length - 1);
+
+  const computePipeline = device.createComputePipeline({
+    layout: 'auto',
+    compute: { module: device.createShaderModule({ code: COMPUTE_WGSL }), entryPoint: 'step' },
+  });
+
+  const renderModule = device.createShaderModule({ code: RENDER_WGSL });
+  const renderPipeline = device.createRenderPipeline({
+    layout: 'auto',
+    vertex: {
+      module: renderModule,
+      entryPoint: 'vs',
+      buffers: [{
+        arrayStride: PACKET_BYTES,
+        stepMode: 'instance',
+        attributes: [
+          { shaderLocation: 0, offset: 0, format: 'float32x2' },    // pos
+          { shaderLocation: 1, offset: 20, format: 'float32x3' },   // late, lost, alpha
+        ],
+      }],
+    },
+    fragment: {
+      module: renderModule,
+      entryPoint: 'fs',
+      targets: [{
+        format,
+        blend: {
+          color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+          alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+        },
+      }],
+    },
+    primitive: { topology: 'triangle-list' },
+  });
+
+  const simValues = new Float32Array(12);   // Sim struct: 44 bytes of fields, 48 with padding
+  const simBuffer = device.createBuffer({ size: simValues.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  const renderBindGroup = device.createBindGroup({
+    layout: renderPipeline.getBindGroupLayout(0),
+    entries: [{ binding: 0, resource: { buffer: simBuffer } }],
+  });
+
+  let packetBuffer = null, computeBindGroup = null, packetCount = 0;
+
+  function seed() {
+    packetCount = state.streams * SLOTS;
+    const raw = new ArrayBuffer(packetCount * PACKET_BYTES);
+    const floats = new Float32Array(raw);
+    const ints = new Uint32Array(raw);
+    const delay = Math.max(0.05, (state.rtt / 2 / 1000) * SLOW);
+    for (let s = 0, i = 0; s < state.streams; s++) {
+      const phase = Math.random();
+      for (let slot = 0; slot < SLOTS; slot++, i++) {
+        const o = i * 8;
+        floats[o + 2] = (slot / SLOTS + phase) % 1;              // clock
+        ints[o + 3] = (Math.random() * 0xffffffff) >>> 0;        // seed
+        floats[o + 4] = delay;                                    // delay
+      }
+    }
+    if (packetBuffer) packetBuffer.destroy();
+    packetBuffer = device.createBuffer({
+      size: raw.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+    device.queue.writeBuffer(packetBuffer, 0, raw);
+    computeBindGroup = device.createBindGroup({
+      layout: computePipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: simBuffer } },
+        { binding: 1, resource: { buffer: packetBuffer } },
+      ],
+    });
+  }
+
+  let dpr = 1;
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const max = device.limits.maxTextureDimension2D;
+    const w = Math.max(1, Math.min(max, Math.round(canvas.clientWidth * dpr)));
+    const h = Math.max(1, Math.min(max, Math.round(canvas.clientHeight * dpr)));
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  }
+  new ResizeObserver(resize).observe(canvas);
+  resize();
+
+  let last = performance.now(), smooth = 16.7, drawn = false;
+  function frame(now) {
+    const elapsed = now - last;
+    last = now;
+    requestAnimationFrame(frame);
+    if (!state.running && drawn) return;   // paused, but always draw the first frame
+    drawn = true;
+
+    const dt = Math.min(elapsed, 50) / 1000;
+    const radius = Math.max(1, 6 / Math.pow(state.streams, 0.2)) * dpr;   // device pixels
+    simValues.set([
+      dt, CYCLE, state.rtt / 2, state.jitter, state.loss / 100, SLOW,
+      state.streams, SLOTS,
+      (radius * 2) / canvas.width, (radius * 2) / canvas.height,
+      Math.min(1, 10 / Math.sqrt(state.streams)),
+    ]);
+    device.queue.writeBuffer(simBuffer, 0, simValues);
+
+    const encoder = device.createCommandEncoder();
+
+    const compute = encoder.beginComputePass();
+    compute.setPipeline(computePipeline);
+    compute.setBindGroup(0, computeBindGroup);
+    compute.dispatchWorkgroups(Math.ceil(packetCount / 64));
+    compute.end();
+
+    const render = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: context.getCurrentTexture().createView(),
+        clearValue: { r: 0.016, g: 0.031, b: 0.039, a: 1 },
+        loadOp: 'clear',
+        storeOp: 'store',
+      }],
+    });
+    render.setPipeline(renderPipeline);
+    render.setBindGroup(0, renderBindGroup);
+    render.setVertexBuffer(0, packetBuffer);
+    render.draw(6, packetCount);
+    render.end();
+
+    device.queue.submit([encoder.finish()]);
+
+    smooth += (elapsed - smooth) * 0.1;
+    $('r-frame').textContent = smooth.toFixed(1) + ' ms · ' + Math.round(1000 / smooth) + ' fps';
+  }
+
+  $('streams').addEventListener('input', (e) => {
+    state.streams = streamOptions[Number(e.target.value)];
+    seed();
+    renderReadings();
+  });
+  $('toggle').addEventListener('click', () => {
+    state.running = !state.running;
+    last = performance.now();
+    $('toggle').textContent = state.running ? 'Pause' : 'Resume';
+  });
+
+  state.streams = streamOptions[Math.min(Number($('streams').value), streamOptions.length - 1)];
+  seed();
+  renderReadings();
+  $('toggle').textContent = state.running ? 'Pause' : 'Resume';
+  requestAnimationFrame((t) => { last = t; requestAnimationFrame(frame); });
+}
+
+renderReadings();
+main().catch((err) => showNotice('WebGPU could not start', String(err && err.message || err)));
+})();
+</script>
+</body>
+</html>

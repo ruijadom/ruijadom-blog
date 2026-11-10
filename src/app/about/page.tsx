@@ -20,7 +20,7 @@ export default function AboutPage() {
           <h2>
             Rui Domingues<span>.</span>
           </h2>
-          <p>Frontend engineer</p>
+          <p>Software engineer</p>
           <div className={s.socials}>
             {SOCIALS.map((social) => (
               <a

@@ -47,7 +47,7 @@ export default function SiteHeader() {
           <span className={s.markDot}>.</span>
         </Link>
         <span className={s.reading}>
-          {reading || "FRONTEND ENGINEERING & EXPLORATION"}
+          {reading || "SCALABLE SYSTEMS & EXPLORATION"}
         </span>
         <nav className={s.desktopNav} aria-label="Main navigation">
           {NAV_LIST.map((item) => (

@@ -21,17 +21,16 @@ export default function Home() {
       <section className={s.hero} id="site-hero">
         <div className={s.heroCopy}>
           <span className={s.eyebrow}>
-            <i /> RUI DOMINGUES · FRONTEND ENGINEER
+            <i /> RUI DOMINGUES · SOFTWARE ENGINEER
           </span>
           <h1>
-            Interfaces with purpose.
+            Architecture that scales.
             <br />
-            <em>Systems built to last.</em>
+            <em>Software that endures.</em>
           </h1>
           <p>
-            Exploring the craft behind great software. Notes on frontend
-            architecture, design systems, and the details that make an
-            experience feel right.
+            Notes on software architecture, design systems, and the contracts
+            that keep growing products stable while they evolve.
           </p>
           <div className={s.actions}>
             <Link href="/blog" className={s.primary}>

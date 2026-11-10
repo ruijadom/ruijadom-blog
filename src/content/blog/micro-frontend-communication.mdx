@@ -1,0 +1,555 @@
+---
+title: "Versioned Contracts Between Micro-Frontends"
+description: "Once micro-frontends deploy independently, the hard part is no longer loading them but letting them talk. This guide compares the ways micro-frontends share state, explains why a shared store breaks at runtime, and builds a typed event bus with a versioned contract that survives independent deploys."
+date: "2026-11-10"
+author: "ruijadom"
+---
+
+<Callout type="info">
+
+This article continues [Micro-Frontends: Scaling Teams and Codebases](/blog/micro-frontend). If you have not read it yet, start there: it covers when micro-frontends make sense and how to set them up with Vite and Module Federation.
+
+</Callout>
+
+In the [previous article](/blog/micro-frontend) we split an application into pieces that different teams build and deploy on their own. It stopped at the point where most real projects start to hurt: the pieces need to talk to each other.
+
+A user starts a call in the softphone. The chat needs to open the conversation with that contact. The video app needs to know a call is active so it does not grab the microphone. The call history needs to refresh when the call ends. Four teams, four deploy pipelines, one fact: *a call started*.
+
+There are several ways to share that fact, and they are often presented as a choice between "state management" and "an event bus". That framing misses the real question. Every option creates coupling. What changes is **what the teams are coupled to**, and **what happens on the day one of them deploys and the others do not**.
+
+This guide walks through the options from the most coupled to the least, explains why a shared store tends to fail at runtime rather than at build time, and then builds an event bus with a versioned contract: typed at compile time, validated at runtime, and able to carry two versions of the same event while teams migrate at their own pace.
+
+## The Question Behind the Question
+
+Independent deployment is the whole point of micro-frontends. It is also what makes communication hard. In a monolith, if you rename a field, the compiler finds every reader and the change ships in one deploy. With micro-frontends, the producer and the consumer are compiled separately, against whatever version of the shared types each one had at build time, and they meet for the first time in the user's browser.
+
+<Callout type="warning">
+
+TypeScript only protects you against the version of the types you built against. A micro-frontend deployed yesterday and one deployed today can disagree about the shape of the same object, and both will compile cleanly.
+
+</Callout>
+
+So the useful question is not "which state library?" but:
+
+- **Who owns this data?** One domain should own each piece of data. Everyone else reads it or reacts to it.
+- **What is the unit of agreement between teams?** A shape in memory, a URL, an API response, or a message?
+- **How does that agreement change over time?** If the answer is "everyone deploys together", you have built a distributed monolith.
+
+## The Spectrum of Options
+
+<Mermaid chart={`
+graph LR
+    A["Shared store<br/>━━━━━━━━━<br/>coupled to<br/>memory shape"] --> B["Host props<br/>and context<br/>━━━━━━━━━<br/>coupled to<br/>the host"]
+    B --> C["URL and<br/>router<br/>━━━━━━━━━<br/>coupled to<br/>routes"]
+    C --> D["Server state<br/>━━━━━━━━━<br/>coupled to<br/>the API"]
+    D --> E["Event bus<br/>━━━━━━━━━<br/>coupled to<br/>a contract"]
+
+    style A fill:#334155,stroke:#ef4444,stroke-width:2px
+    style B fill:#334155,stroke:#f59e0b,stroke-width:2px
+    style C fill:#334155,stroke:#f59e0b,stroke-width:2px
+    style D fill:#334155,stroke:#10b981,stroke-width:2px
+    style E fill:#334155,stroke:#10b981,stroke-width:2px
+`} />
+
+### 1. A Shared Global Store
+
+The first idea most teams have is to put a store in the host and expose it through Module Federation, so every micro-frontend can read and write it.
+
+```ts
+// host/src/stores/call-store.ts (exposed as "host/callStore")
+import { create } from 'zustand'
+
+interface CallState {
+  activeCall: { id: string; number: string } | null
+  setActiveCall: (call: CallState['activeCall']) => void
+}
+
+export const useCallStore = create<CallState>()((set) => ({
+  activeCall: null,
+  setActiveCall: (activeCall) => set({ activeCall }),
+}))
+```
+
+```tsx
+// chat/src/ChatHeader.tsx
+import { useCallStore } from 'host/callStore'
+
+export function ChatHeader() {
+  const number = useCallStore((s) => s.activeCall?.number)
+  return number ? <ActiveCallBanner number={number} /> : null
+}
+```
+
+It works on day one, and it is the hardest option to change later. The shape of `activeCall` is now a public API, read inside the render functions of other teams' components. If the softphone team renames `number` to `remote.number`, the chat compiles fine (it still has the old types) and shows an empty banner in production. Every consumer is coupled to the producer's internal data model, not to a message the producer chose to publish.
+
+There are also mechanical problems. The store only works if every micro-frontend gets the same instance, so `zustand` and the store module must be federation singletons. Any team can write to it, so ownership of the data is a convention, not a rule. And debugging "who set this to null?" across four repositories is not fun.
+
+A shared store is reasonable **inside** one domain, when a single team owns several micro-frontends that deploy together. Across domains, it is the micro-frontend version of every module importing every other module's internals.
+
+### 2. Props and Context from the Host
+
+The host can own the shared data and pass it down to each remote, as props on the mounted component or through a React context it provides.
+
+This is more explicit than a shared store: each remote declares what it receives, and only the host writes. The cost is that the host becomes a coordinator that knows about every domain. Every new piece of shared data is a change to the host, and the host team becomes a bottleneck, which is exactly what micro-frontends were meant to remove. It also only works when the host and the remotes use the same framework.
+
+Host props are a good fit for **context that really is global**: the signed-in user, the tenant, the locale, the feature flags. They are a poor fit for facts that one domain produces and another reacts to.
+
+### 3. The URL
+
+The URL is the oldest shared state on the web, and it is underrated. If the chat should show the conversation for a contact, `/chat/conversations/123` is a contract every micro-frontend understands, survives a page reload, and can be shared as a link.
+
+The URL is great for **where the user is**. It is not meant for things that happen while the user stays on the same page, like a call starting in the background.
+
+### 4. Server State
+
+Often the data two micro-frontends "share" is really data that lives on the server. The call history, the contact list and the conversation list all have an owner already: the API.
+
+If each micro-frontend fetches what it needs with its own React Query client, they stay consistent because they read from the same source, not because they share memory. The contract between teams is the API specification, which is already versioned, documented and reviewed.
+
+The gap is freshness. When the softphone ends a call, the call history in another micro-frontend does not know it should refetch. That is a perfect job for a small message, which brings us to the last option.
+
+### 5. An Event Bus
+
+With an event bus, a micro-frontend publishes a fact ("call 42 started") and anyone interested reacts to it. The producer does not know who is listening. The consumers do not know who produced it. The only thing they share is the definition of the event.
+
+That definition is the whole design. An untyped bus, where anyone can `dispatch('callStarted', anything)`, has the same problems as the shared store, with less visibility. A bus with a **versioned contract** is what makes independent deploys safe.
+
+### Comparing Them
+
+| | Shared store | Host props | URL | Server state | Event bus + contract |
+|---|---|---|---|---|---|
+| Teams are coupled to | the producer's memory shape | the host | the route structure | the API spec | the event contract |
+| Breaks at | runtime, silently | host deploys | broken links | API versioning | contract validation, loudly |
+| Who can write | anyone | the host | anyone (navigation) | the API owner | the event's owner |
+| Works across frameworks | no | rarely | yes | yes | yes |
+| Works across tabs and windows | no | no | per tab | yes | with a transport adapter |
+| Best for | one domain, one team | user, tenant, flags | where the user is | data the server owns | facts other domains react to |
+
+The pragmatic answer is a combination: **the URL for navigation, server state for data, host props for global context, and events for facts that cross domain boundaries**. A shared store across domains is the one option worth avoiding.
+
+## Designing the Contract
+
+The rest of this guide builds the event bus. It has three parts:
+
+1. A **contract package**, published on its own, that defines every event, every version of it, and how to convert between versions.
+2. A small **bus** that publishes and subscribes through the contract.
+3. **Tests** that run in the contract package and in every consumer.
+
+<Mermaid chart={`
+graph TB
+    Contract["@acme/events-contract<br/>━━━━━━━━━<br/>schemas per version<br/>converters<br/>examples"]
+
+    Softphone["Softphone MFE<br/>(producer)"]
+    Chat["Chat MFE<br/>(consumer)"]
+    History["History MFE<br/>(consumer)"]
+    Bus(("Event bus<br/>one per page"))
+
+    Contract -.build time.-> Softphone
+    Contract -.build time.-> Chat
+    Contract -.build time.-> History
+
+    Softphone -- "call.started v2, v1" --> Bus
+    Bus -- "v2" --> Chat
+    Bus -- "v1" --> History
+
+    style Contract fill:#1e293b,stroke:#3b82f6,stroke-width:3px
+    style Bus fill:#1e293b,stroke:#10b981,stroke-width:2px
+`} />
+
+The contract lives in its own package, not in the host and not in the producer. The host should not be a coordinator, and putting the definition inside the producer means consumers depend on the producer's repository. A separate package with its own changelog makes changes to it visible, reviewable and deliberate.
+
+### Events Describe Facts, Not Commands
+
+Before writing any code, name the events well. An event says something **that already happened in the producer's domain**, in the past tense: `call.started`, `call.ended`, `conversation.read`.
+
+Avoid two common mistakes:
+
+- **UI events**, like `callButton.clicked`. They leak the producer's interface into other teams' code. When the button moves into a menu, the event changes meaning.
+- **Commands**, like `chat.openConversation`. A command tells another domain what to do, and the producer will soon want to know whether it worked. That is a function call over a bus, with none of the guarantees of a function call. If one micro-frontend needs another to do something, expose a function, a route or an API.
+
+### Schemas Per Version
+
+Each event has one schema per version. Zod gives us both the runtime validator and the TypeScript type from one definition.
+
+```ts
+// packages/events-contract/src/contract.ts
+import { z } from 'zod'
+
+const CallStartedV1 = z.object({
+  callId: z.string(),
+  number: z.string(),
+})
+
+const CallStartedV2 = z.object({
+  callId: z.string(),
+  remote: z.object({
+    number: z.string(),
+    displayName: z.string().optional(),
+  }),
+  direction: z.enum(['inbound', 'outbound']),
+})
+
+const CallEndedV1 = z.object({
+  callId: z.string(),
+  reason: z.enum(['hangup', 'rejected', 'failed']),
+  durationMs: z.number().int().nonnegative(),
+})
+
+export const contract = {
+  'call.started': { 1: CallStartedV1, 2: CallStartedV2 },
+  'call.ended': { 1: CallEndedV1 },
+} as const
+```
+
+The types are derived from the contract, so there is no second definition to keep in sync.
+
+```ts
+// packages/events-contract/src/types.ts
+import type { z } from 'zod'
+import type { contract } from './contract'
+
+export type Contract = typeof contract
+export type EventType = keyof Contract
+export type EventVersion<T extends EventType> = keyof Contract[T] & number
+
+export type Payload<T extends EventType, V extends EventVersion<T>> =
+  Contract[T][V] extends z.ZodTypeAny ? z.infer<Contract[T][V]> : never
+
+export interface Envelope<T extends EventType, V extends EventVersion<T>> {
+  id: string
+  type: T
+  version: V
+  source: string
+  timestamp: number
+  correlationId?: string
+  payload: Payload<T, V>
+}
+```
+
+The envelope carries what every event needs regardless of its type: a unique `id`, the `source` micro-frontend for debugging, a `timestamp`, and an optional `correlationId` to follow one user action across several events.
+
+### Converters Between Versions
+
+Version 2 of `call.started` replaced `number` with a `remote` object and added `direction`. Some consumers will still expect version 1 for weeks. Instead of asking every team to migrate on the same day, the contract package knows how to turn one version into the next and back.
+
+```ts
+// packages/events-contract/src/converters.ts
+import type { EventType, Payload } from './types'
+
+type ConverterTable = Partial<
+  Record<EventType, Record<number, (payload: any) => unknown>>
+>
+
+// upcasters[type][n] turns version n into version n + 1
+export const upcasters: ConverterTable = {
+  'call.started': {
+    1: (p: Payload<'call.started', 1>): Payload<'call.started', 2> => ({
+      callId: p.callId,
+      remote: { number: p.number },
+      // Version 1 was only ever published for inbound calls.
+      direction: 'inbound',
+    }),
+  },
+}
+
+// downcasters[type][n] turns version n into version n - 1
+export const downcasters: ConverterTable = {
+  'call.started': {
+    2: (p: Payload<'call.started', 2>): Payload<'call.started', 1> => ({
+      callId: p.callId,
+      number: p.remote.number,
+    }),
+  },
+}
+```
+
+Writing the converters is a good test of the change itself. Look at the upcaster: it has to invent `direction`. That is only acceptable because we know version 1 was inbound-only. If a converter would have to guess, the change is not a new version of the same event. It is a different event, and it deserves a different name.
+
+<Callout type="info">
+
+**The rule of thumb:** the producer owns compatibility going back (downcasting to versions older consumers still read), and the consumer owns compatibility going forward (upcasting from versions older producers still publish). Both use the converters in their own copy of the contract package.
+
+</Callout>
+
+## Building the Bus
+
+The bus needs very little code. The browser already has an event system: `EventTarget` and `CustomEvent`. What we add is the contract.
+
+### One Bus Per Page
+
+With Module Federation, it is easy to end up with two copies of the same package on one page, one bundled in each micro-frontend. Two copies of a module-level `new EventTarget()` would be two buses that never hear each other. To avoid depending on singleton configuration, the bus lives on `globalThis` under a registered symbol, so every copy of the package finds the same one.
+
+```ts
+// packages/events-contract/src/bus.ts
+import type { z } from 'zod'
+import { contract } from './contract'
+import { downcasters, upcasters } from './converters'
+import type { Envelope, EventType, EventVersion, Payload } from './types'
+
+const BUS_KEY = Symbol.for('acme.events.bus')
+
+function bus(): EventTarget {
+  const g = globalThis as Record<symbol, unknown>
+  return (g[BUS_KEY] ??= new EventTarget()) as EventTarget
+}
+
+const channel = (type: string, version: number) => `${type}@${version}`
+
+function schemaFor(type: EventType, version: number) {
+  return (contract[type] as Record<number, z.ZodTypeAny>)[version]
+}
+```
+
+Each version of each event gets its own channel name, such as `call.started@2`. A consumer only listens to the versions it understands.
+
+### Publishing
+
+The producer validates its own payload first. This catches producer bugs at the source, in development and in the producer's tests, instead of in someone else's handler.
+
+It then publishes the event at its own version, and again at every older version it can still produce through the downcasters, newest first, all with the same `id`.
+
+```ts
+export function publish<T extends EventType, V extends EventVersion<T>>(
+  type: T,
+  version: V,
+  payload: Payload<T, V>,
+  meta: { source: string; correlationId?: string },
+): void {
+  const id = crypto.randomUUID()
+  const timestamp = Date.now()
+
+  let current: unknown = schemaFor(type, version).parse(payload)
+
+  for (let v: number = version; current !== undefined; v--) {
+    bus().dispatchEvent(
+      new CustomEvent(channel(type, v), {
+        detail: { id, type, version: v, timestamp, ...meta, payload: current },
+      }),
+    )
+    const down = downcasters[type]?.[v]
+    current = down ? down(current) : undefined
+  }
+}
+```
+
+### Subscribing
+
+A consumer subscribes to the version it was written for. The bus also listens to every older version the consumer's copy of the contract knows, and upcasts those. That covers the case where the consumer was deployed before the producer.
+
+Because the producer publishes the newest version first and with the same `id`, a consumer that already handled the richer version ignores the older copies. If the newer copy fails validation, the consumer still accepts an older one, so a bad payload in a new version degrades instead of breaking the feature.
+
+```ts
+export function subscribe<T extends EventType, V extends EventVersion<T>>(
+  type: T,
+  version: V,
+  handler: (event: Envelope<T, V>) => void,
+): () => void {
+  const target = schemaFor(type, version)
+  // All versions of one event are dispatched back to back, so the last id is enough.
+  let lastHandledId: string | undefined
+  const listeners: Array<[string, EventListener]> = []
+
+  for (let from: number = version; schemaFor(type, from); from--) {
+    const listener: EventListener = (event) => {
+      const envelope = (event as CustomEvent).detail
+      if (envelope.id === lastHandledId) return
+
+      let payload: unknown = envelope.payload
+      for (let v = from; v < version; v++) {
+        payload = upcasters[type]![v]!(payload)
+      }
+
+      const result = target.safeParse(payload)
+      if (!result.success) {
+        reportContractViolation(envelope, result.error)
+        return
+      }
+
+      lastHandledId = envelope.id
+      handler({ ...envelope, version, payload: result.data } as Envelope<T, V>)
+    }
+
+    bus().addEventListener(channel(type, from), listener)
+    listeners.push([channel(type, from), listener])
+  }
+
+  registerSubscriber(type, version)
+
+  return () => {
+    for (const [name, listener] of listeners) {
+      bus().removeEventListener(name, listener)
+    }
+  }
+}
+```
+
+Validation on the consumer side matters as much as on the producer side. TypeScript told the consumer's developer what the payload looks like **at build time**. Zod checks what it actually looks like **today**, after a deploy the consumer's team never saw. When the check fails, `reportContractViolation` logs it in development and sends it to monitoring in production, and the handler is not called with data it cannot handle.
+
+Note that `z.object` drops keys it does not know. That is deliberate: a consumer built against an older schema simply ignores fields that were added later. This is the "tolerant reader" pattern, and it is what makes additive changes free. Do not use `.strict()` on event schemas.
+
+### A React Hook
+
+Most consumers are React components, so a small hook makes subscribing safe with respect to re-renders and unmounts.
+
+```ts
+// packages/events-contract/src/react.ts
+import { useEffect, useLayoutEffect, useRef } from 'react'
+import { subscribe } from './bus'
+import type { Envelope, EventType, EventVersion } from './types'
+
+export function useEvent<T extends EventType, V extends EventVersion<T>>(
+  type: T,
+  version: V,
+  handler: (event: Envelope<T, V>) => void,
+) {
+  const handlerRef = useRef(handler)
+  useLayoutEffect(() => {
+    handlerRef.current = handler
+  })
+
+  useEffect(
+    () => subscribe(type, version, (event) => handlerRef.current(event)),
+    [type, version],
+  )
+}
+```
+
+Now the chat team writes code against version 2, fully typed:
+
+```tsx
+// chat/src/useOpenConversationOnCall.ts
+import { useEvent } from '@acme/events-contract/react'
+
+export function useOpenConversationOnCall() {
+  const openConversation = useOpenConversation()
+
+  useEvent('call.started', 2, ({ payload }) => {
+    openConversation({
+      number: payload.remote.number,
+      title: payload.remote.displayName,
+    })
+  })
+}
+```
+
+And the history team, still on version 1 of `call.ended`, uses the event only as a signal to refetch. This is where the event bus and server state work together: the event says *something changed*, and React Query fetches *what* changed from the source of truth.
+
+```tsx
+// history/src/useRefreshHistoryOnCallEnd.ts
+import { useQueryClient } from '@tanstack/react-query'
+import { useEvent } from '@acme/events-contract/react'
+
+export function useRefreshHistoryOnCallEnd() {
+  const queryClient = useQueryClient()
+
+  useEvent('call.ended', 1, () => {
+    queryClient.invalidateQueries({ queryKey: ['call-history'] })
+  })
+}
+```
+
+<Callout type="success">
+
+Keep payloads small. An event should carry identifiers and the few fields a consumer needs to react, not a copy of the producer's state. If a consumer needs the full record, it fetches it. Small payloads are easier to version and almost never need a new major version.
+
+</Callout>
+
+## Versioning Rules
+
+A contract is only useful if everyone agrees on what counts as a breaking change. These rules fit on one page and should live in the contract package's README.
+
+| Change | Event version | Package version |
+|---|---|---|
+| Add an optional field | stays the same | minor |
+| Add a new event | starts at 1 | minor |
+| Rename or remove a field, change a type, make a field required | new version with converters both ways | minor |
+| Stop supporting the oldest version of an event | removed from the contract | major |
+
+Two details are easy to miss.
+
+**A new event version is not a breaking change for the package.** Old consumers keep working, because producers keep publishing the old version through the downcaster. The package only has a breaking release when a version is removed.
+
+**Removing a version needs data, not a guess.** The `registerSubscriber` call in `subscribe` is there for this. It records which micro-frontend subscribes to which version and reports it to your analytics. When no deployed micro-frontend has subscribed to `call.started@1` for a few weeks, it is safe to delete version 1 and its converters in a major release.
+
+```ts
+function registerSubscriber(type: EventType, version: number) {
+  const source = currentMicroFrontendName()
+  telemetry.track('event_subscription', { type, version, source })
+}
+```
+
+## Testing the Contract
+
+Three kinds of tests keep the contract honest, and none of them need a browser.
+
+### In the Contract Package
+
+Each version of each event ships with an example payload. The contract's own tests check that every example matches its schema, and that every converter turns a valid payload into a valid payload of the neighbouring version.
+
+```ts
+// packages/events-contract/src/contract.test.ts
+import { describe, expect, it } from 'vitest'
+import type { z } from 'zod'
+import { contract } from './contract'
+import { downcasters, upcasters } from './converters'
+import { examples } from './examples'
+import type { EventType } from './types'
+
+const types = Object.keys(contract) as EventType[]
+
+describe.each(types)('%s', (type) => {
+  const schemas = contract[type] as Record<number, z.ZodTypeAny>
+  const versions = Object.keys(schemas).map(Number).sort((a, b) => a - b)
+  const example = (v: number) => (examples[type] as Record<number, unknown>)[v]
+
+  it.each(versions)('example for v%i matches its schema', (v) => {
+    expect(schemas[v].safeParse(example(v)).success).toBe(true)
+  })
+
+  it.each(versions.slice(0, -1))('v%i upcasts to the next version', (v) => {
+    const up = upcasters[type]?.[v]
+    expect(up).toBeDefined()
+    expect(schemas[v + 1].safeParse(up!(example(v))).success).toBe(true)
+  })
+
+  it.each(versions.slice(1))('v%i downcasts to the previous version', (v) => {
+    const down = downcasters[type]?.[v]
+    expect(down).toBeDefined()
+    expect(schemas[v - 1].safeParse(down!(example(v))).success).toBe(true)
+  })
+})
+```
+
+This makes it impossible to merge a new version without the converters that keep older micro-frontends working.
+
+### In Each Consumer
+
+Each consumer tests its handlers against the published examples of the versions it subscribes to. When the contract package is upgraded in the consumer's repository, these tests show whether the consumer still understands what producers send. This is the idea behind consumer-driven contract testing, as tools like Pact do for HTTP APIs, applied to events in the browser.
+
+### In Each Producer
+
+The producer's tests call the code that publishes and check that `publish` does not throw. Because `publish` validates the payload, a producer cannot send something its own contract does not allow.
+
+## Beyond One Page
+
+A communications app rarely lives in one tab. The softphone might run in an Electron window while the chat is in another, or the user might have two browser tabs open. The bus above only covers one JavaScript realm, but the envelope was designed to travel.
+
+Because envelopes are plain data, with no functions and no class instances, they survive the structured clone algorithm. That means a transport adapter can forward them through `BroadcastChannel` between tabs, or through Electron IPC between windows, and the receiving side dispatches them on its local bus. The contract, the converters and the validation stay the same. Only the transport changes.
+
+The one thing an adapter must add is a guard against echoes: mark envelopes that arrived from another realm, and do not forward those back out.
+
+## Common Misconceptions
+
+- **"An event bus decouples the micro-frontends."** It changes what they are coupled to. Without a contract, they are coupled to strings and guesses, which is worse than a shared store because nothing shows the dependency.
+- **"TypeScript makes the contract safe."** It makes it safe at build time, for the version each team built against. Independent deploys need runtime validation too.
+- **"We will just update every consumer when an event changes."** That is a coordinated deploy, which is what micro-frontends exist to avoid. Converters let teams migrate on their own schedule.
+- **"Everything shared should go through the bus."** Most shared data belongs to the server, and the URL already shares navigation. The bus is for facts that cross domains.
+- **"A shared store is fine because we use Module Federation singletons."** Singletons solve the "same instance" problem. They do nothing for the "different shape after a deploy" problem.
+
+## Conclusion
+
+Communication between micro-frontends is an API design problem, not a state-library problem. Every option couples teams to something: a shape in memory, the host, the routes, the server API, or a contract. The goal is to choose the coupling that survives independent deploys.
+
+For most applications that means using the URL for navigation, server state for data, host props for truly global context, and an event bus for facts one domain produces and others react to. The bus is only as good as its contract: events named as facts, a schema per version, converters in both directions, validation on both sides, and tests that refuse a new version without a path for older consumers.
+
+Treat events with the same care as a public REST API, with a specification, versions, a deprecation policy and usage data, and they will let your teams change their own code without asking anyone else for permission. That freedom was the reason to split the frontend in the first place.

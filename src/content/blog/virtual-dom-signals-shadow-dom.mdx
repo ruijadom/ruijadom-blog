@@ -1,0 +1,478 @@
+---
+title: "Virtual DOM, Signals and Shadow DOM: What Each One Actually Solves"
+description: "Virtual DOM, compiled templates, signals and Shadow DOM are often compared as if they were rival ways of building UIs. They answer different questions. This guide builds a small version of each, measures them on the same list, and looks at how to choose between them for a team."
+date: "2026-10-22"
+published: false
+author: "ruijadom"
+---
+
+Every UI framework has to answer one question: the state changed, so which parts of the page need to change?
+
+For a long time the most popular answer was the Virtual DOM. Today it is one answer among several. Svelte and Solid compile templates into direct DOM updates, Angular has moved to signals, Vue is preparing a mode with no Virtual DOM at all, and React has a compiler. At the same time, Web Components and Shadow DOM have become a common foundation for design systems.
+
+These ideas are often put in the same comparison table, as if a team had to pick one. Most of them are alternatives to each other. One of them is not: Shadow DOM answers a different question entirely. Mixing the two questions up leads to wrong expectations and, sometimes, to wrong architecture decisions.
+
+This guide builds a small version of each approach, runs them against the same list in a playground, and finishes with the questions that matter when the choice is made for a team rather than for a benchmark.
+
+{/* Replace SANDBOX_ID with the CodeSandbox created from public/playgrounds/render-strategies-playground.html
+<CodeSandbox
+  sandboxId="SANDBOX_ID"
+  title="Render Strategy Lab"
+  height={1100}
+  theme="dark"
+  options={{
+    fontsize: 12,
+    hidenavigation: false,
+    expanddevtools: true,
+    editorsize: 50
+  }}
+/>
+*/}
+
+## Two Questions, Not One
+
+When people compare these technologies, they are usually mixing two separate questions.
+
+- **How does the page update?** When a value changes, how does the framework find the DOM nodes that depend on it? This is the rendering strategy: Virtual DOM, compiled instructions, signals.
+- **What can reach a component?** Which styles, selectors and scripts from the rest of the page can affect the inside of a component? This is encapsulation, and it is what Shadow DOM is for.
+
+<Mermaid chart={`
+graph TB
+    Q1["How does the page update?"]
+    Q2["What can reach a component?"]
+
+    Q1 --> VDOM["Virtual DOM<br/>React, Preact"]
+    Q1 --> HYB["Compiler-informed Virtual DOM<br/>Vue 3"]
+    Q1 --> INC["Compiled instructions<br/>Angular Ivy, Lit"]
+    Q1 --> SIG["Fine-grained signals<br/>Solid, Svelte 5, Vue Vapor, Angular signals"]
+
+    Q2 --> GLOBAL["Global CSS<br/>with conventions"]
+    Q2 --> SCOPED["Build-time scoping<br/>CSS Modules, Vue scoped styles"]
+    Q2 --> SHADOW["Shadow DOM<br/>Web Components"]
+`} />
+
+The two axes are independent. A Lit component uses compiled template updates inside a shadow root. A React app can render Web Components that use Shadow DOM. A Solid app can ignore Shadow DOM completely. Shadow DOM is not a faster DOM, and it is not a kind of Virtual DOM.
+
+The rest of this guide takes the first question first, then comes back to the second.
+
+## The Baseline: Updating the DOM by Hand
+
+Before frameworks, the answer to "what changed?" was written by hand.
+
+```ts
+function onRenamed(id: number, name: string) {
+  const label = document.querySelector(`[data-id="${id}"] .label`);
+  if (label) label.textContent = name;
+}
+```
+
+This is as fast as it gets: one lookup, one write. The problem is not speed. The problem is that every event handler has to know every place on the page that shows the data it changes. When the same name appears in a list, a header and a tooltip, someone has to remember all three. In a large application, someone eventually forgets one.
+
+The opposite extreme is to throw the old markup away and rebuild it from the state.
+
+```ts
+function render(rows: Row[]) {
+  list.innerHTML = rows
+    .map((r) => `<li><span class="n">${r.id}</span><span class="label">${r.label}</span></li>`)
+    .join('');
+}
+```
+
+This is easy to reason about, because the markup is always a function of the state. It is also expensive, and it is destructive. Every update replaces every node, so focus, text selection, scroll position inside nested elements and the state of any `<input>` are lost.
+
+Every approach that follows is an attempt to keep the second model (describe the UI from state) at a cost closer to the first (touch only what changed).
+
+## The Virtual DOM
+
+The Virtual DOM, made popular by React in 2013, keeps the "rebuild everything" model but rebuilds a cheap copy instead of the real thing.
+
+1. **Render.** Components run and return a tree of plain JavaScript objects describing the UI.
+2. **Diff.** The new tree is compared with the previous one.
+3. **Patch.** Only the differences are applied to the real DOM.
+
+### A Minimal Virtual DOM
+
+A working version fits in a few dozen lines. A virtual node is an object with a tag, properties and children, or a piece of text.
+
+```ts
+type VNode =
+  | { text: string; el?: Text }
+  | { tag: string; props: Record<string, string>; children: VNode[]; el?: HTMLElement };
+
+function h(tag: string, props: Record<string, string> | null, ...children: unknown[]): VNode {
+  return {
+    tag,
+    props: props ?? {},
+    children: children.flat().map((c) =>
+      typeof c === 'object' ? (c as VNode) : { text: String(c) },
+    ),
+  };
+}
+```
+
+Mounting turns a virtual node into real DOM nodes and keeps a reference to them.
+
+```ts
+function mount(vnode: VNode): Node {
+  if ('text' in vnode) return (vnode.el = document.createTextNode(vnode.text));
+
+  const el = (vnode.el = document.createElement(vnode.tag));
+  for (const [name, value] of Object.entries(vnode.props)) el.setAttribute(name, value);
+  for (const child of vnode.children) el.appendChild(mount(child));
+  return el;
+}
+```
+
+Patching walks the old and new trees together and writes to the DOM only where they differ.
+
+```ts
+function patch(oldNode: VNode, newNode: VNode) {
+  if ('text' in oldNode && 'text' in newNode) {
+    newNode.el = oldNode.el;
+    if (oldNode.text !== newNode.text) newNode.el!.data = newNode.text;
+    return;
+  }
+
+  if (!('tag' in oldNode) || !('tag' in newNode) || oldNode.tag !== newNode.tag) {
+    (oldNode.el as ChildNode).replaceWith(mount(newNode));
+    return;
+  }
+
+  const el = (newNode.el = oldNode.el!);
+  for (const [name, value] of Object.entries(newNode.props)) {
+    if (oldNode.props[name] !== value) el.setAttribute(name, value);
+  }
+  for (const name of Object.keys(oldNode.props)) {
+    if (!(name in newNode.props)) el.removeAttribute(name);
+  }
+
+  patchChildren(el, oldNode.children, newNode.children);
+}
+
+function patchChildren(el: HTMLElement, oldChildren: VNode[], newChildren: VNode[]) {
+  const common = Math.min(oldChildren.length, newChildren.length);
+  for (let i = 0; i < common; i++) patch(oldChildren[i], newChildren[i]);
+  for (let i = common; i < newChildren.length; i++) el.appendChild(mount(newChildren[i]));
+  for (let i = common; i < oldChildren.length; i++) el.removeChild(oldChildren[i].el!);
+}
+```
+
+A component is now just a function from state to a tree, which is the whole appeal.
+
+```ts
+const RowView = (row: Row) =>
+  h('li', null, h('span', { class: 'n' }, row.id), h('span', { class: 'label' }, row.label));
+
+const ListView = (rows: Row[]) => h('ul', { class: 'list' }, rows.map(RowView));
+```
+
+### What It Costs
+
+In the playground, a list of 1,000 rows is 5,001 virtual nodes (each row is an `<li>`, two `<span>`s and two text nodes). When one label changes, the Virtual DOM writes exactly one text node to the DOM. To find that one node, it creates 5,001 new objects and compares 5,001 pairs.
+
+That is the defining trade-off: **the cost of an update grows with the size of the tree that is re-rendered, not with the size of the change.** The DOM writes are minimal. The work to find them is not.
+
+Real frameworks reduce that cost in several ways. React only re-renders from the component whose state changed downwards, so state that lives close to where it is used keeps the re-rendered tree small. `memo` lets a component skip rendering when its props are the same. The React Compiler, stable since version 1.0 in October 2025, adds that memoization automatically at build time. All of them make the tree smaller. None of them change the model: render, compare, patch.
+
+### Keys
+
+The minimal `patchChildren` above matches children by position: old child 0 with new child 0, and so on. Add one row at the top of the list and every row is now compared with the row that used to be above it. Every label differs, so every label is rewritten. In the playground this one insertion changes almost 2,000 DOM nodes.
+
+Keys fix this by letting the diff match children by identity instead of position.
+
+```ts
+type KeyedVNode = VNode & { key: string | number };
+
+function patchKeyedChildren(el: HTMLElement, oldChildren: KeyedVNode[], newChildren: KeyedVNode[]) {
+  const byKey = new Map(oldChildren.map((c) => [c.key, c]));
+
+  newChildren.forEach((child, i) => {
+    const old = byKey.get(child.key);
+    if (old) {
+      patch(old, child);
+      byKey.delete(child.key);
+    } else {
+      mount(child);
+    }
+    const current = el.childNodes[i];
+    if (current !== child.el) el.insertBefore(child.el!, current ?? null);
+  });
+
+  for (const leftover of byKey.values()) leftover.el!.remove();
+}
+```
+
+With keys, the same insertion changes one DOM node. This is why React warns about missing keys, and why using an array index as a key brings the problem back: the index of every row changes when one is added at the top.
+
+## The Compiler-Informed Virtual DOM
+
+A plain Virtual DOM compares everything because it knows nothing about the template. But templates are mostly static. In `<li><span class="n">{id}</span><span class="label">{label}</span></li>`, the tags and the class names never change. Only two text values can.
+
+Vue 3 uses its compiler to pass that knowledge to the runtime. A template like this:
+
+```html
+<p class="title">{{ message }}</p>
+```
+
+compiles to something close to:
+
+```ts
+createElementVNode('p', { class: 'title' }, toDisplayString(message), 1 /* TEXT */);
+```
+
+The `1` is a patch flag. It tells the runtime that only the text of this element can change, so the diff skips the props entirely. Fully static subtrees are created once and reused instead of being compared, and dynamic nodes are collected into a flat list (a "block") so the runtime does not have to walk the static parts of the tree to find them.
+
+It is still a Virtual DOM. The difference is that the comparison is limited to the places the compiler has proven can change.
+
+## Compiled Instructions
+
+Another family drops the tree of objects and compiles templates into code that creates the DOM once and then only checks the dynamic values.
+
+Angular's Ivy renderer, which grew out of Google's Incremental DOM project, is the best-known example. A template compiles to a function with two modes: a creation pass and an update pass.
+
+```ts
+// Simplified Angular output for: <li>{{ row.label }}</li>
+function RowTemplate(rf: RenderFlags, ctx: RowComponent) {
+  if (rf & RenderFlags.Create) {
+    ɵɵelementStart(0, 'li');
+    ɵɵtext(1);
+    ɵɵelementEnd();
+  }
+  if (rf & RenderFlags.Update) {
+    ɵɵadvance(1);
+    ɵɵtextInterpolate(ctx.row.label);
+  }
+}
+```
+
+On update, there is no new tree. The instructions run in place, compare each binding with the value stored from the last run, and write to the DOM only when it differs. Memory use is lower than with a Virtual DOM, because nothing is allocated per render.
+
+Lit, the library most often used to build Web Components, works in a similar spirit with standard JavaScript template literals.
+
+```ts
+html`<li><span class="n">${row.id}</span><span class="label">${row.label}</span></li>`;
+```
+
+The static strings of a tagged template are the same object every time it runs, so Lit can parse the template once, remember where the dynamic "parts" are, and on every update compare only the values that fill them. It diffs values, not trees.
+
+Both approaches still run the whole template function on every update. What they avoid is creating and comparing a parallel tree of objects.
+
+## Signals and Fine-Grained Reactivity
+
+The last approach turns the question around. Instead of re-running code to find out what changed, each piece of state keeps a list of the code that depends on it.
+
+A signal is a value that records who reads it.
+
+```ts
+type Effect = () => void;
+let currentEffect: Effect | null = null;
+
+export function signal<T>(value: T) {
+  const subscribers = new Set<Effect>();
+
+  return {
+    get(): T {
+      if (currentEffect) subscribers.add(currentEffect);
+      return value;
+    },
+    set(next: T) {
+      if (Object.is(next, value)) return;
+      value = next;
+      for (const run of [...subscribers]) run();
+    },
+  };
+}
+
+export function effect(fn: () => void) {
+  const run: Effect = () => {
+    const previous = currentEffect;
+    currentEffect = run;
+    try {
+      fn();
+    } finally {
+      currentEffect = previous;
+    }
+  };
+  run();
+}
+
+export type Signal<T> = ReturnType<typeof signal<T>>;
+```
+
+When an effect runs, every signal it reads adds the effect to its subscribers. When a signal changes, it runs exactly those effects and nothing else.
+
+The interesting part is what a compiler does with this. Solid and Svelte 5 compile a component into code that builds its DOM nodes once and binds each dynamic value directly to the node that displays it.
+
+```ts
+// Roughly what a signals-based compiler produces for one row.
+function createRow(row: { id: number; label: Signal<string> }) {
+  const li = document.createElement('li');
+
+  const n = document.createElement('span');
+  n.className = 'n';
+  n.textContent = String(row.id);
+
+  const label = document.createElement('span');
+  label.className = 'label';
+  const text = document.createTextNode('');
+  label.appendChild(text);
+
+  li.append(n, label);
+
+  effect(() => {
+    text.data = row.label.get();
+  });
+
+  return li;
+}
+```
+
+The component function runs once. There is no re-render. When a label changes, the event handler sets one signal, the signal runs one effect, and the effect writes one text node.
+
+```ts
+rowsById.get(id)!.label.set('Renamed');
+```
+
+In the playground, editing one row of 5,000 costs one effect and one DOM write. The Virtual DOM does the same single write, but compares 25,001 nodes to get there.
+
+### Where Signals Show Up Today
+
+- **Solid** has been built on signals from the start.
+- **Svelte 5**, released in October 2024, replaced its compiler-driven reactivity with signals exposed as runes (`$state`, `$derived`, `$effect`).
+- **Angular** added signals in version 16 and made zoneless change detection, driven by signals instead of Zone.js, the default for new projects in version 21.
+- **Vue** has always used a reactive system close to signals for its state. Its upcoming Vapor mode, in release candidate for Vue 3.6 at the time of writing, compiles components into direct DOM updates with no Virtual DOM.
+- **Preact** offers signals as a separate package that can update text nodes without re-rendering a component.
+
+There is also a TC39 proposal to add signals to JavaScript itself, still at an early stage. Its goal is not to replace these libraries but to give them a shared core, so that state could move between frameworks.
+
+### What Signals Cost
+
+Signals move work from update time to creation time. Every binding allocates an effect and a subscription, so the first render does more work and holds more memory than a Virtual DOM render. Lists still need reconciliation when items are added, removed or reordered. In the playground, the signals version keeps a map from row id to DOM node for exactly this reason, which is the same idea as a key.
+
+The mental model is also different. In React, a component is a function that runs on every render, and the rule is "the UI is a function of the state". With signals, a component is a setup function that runs once, and the rules are about which reads are tracked. Reading a signal outside an effect, or destructuring a reactive object too early, silently breaks the connection. Effects that set other signals can form chains that are hard to follow in a debugger. A production library also has to handle what the minimal version above does not: disposing effects when their DOM is removed, batching several changes into one update, and avoiding glitches when derived values depend on each other.
+
+## Measuring the Difference
+
+The playground runs the three strategies (minimal Virtual DOM, minimal signals and `innerHTML`) against the same data and counts the work each one does. A `MutationObserver` on each list counts the DOM nodes that actually changed.
+
+| Action (1,000 rows) | Virtual DOM | Virtual DOM with keys | Signals | innerHTML |
+| --- | --- | --- | --- | --- |
+| Edit one row | 5,001 nodes compared, 1 DOM change | Same | 1 effect, 1 DOM change | 2,000 DOM changes |
+| Edit every row | 5,001 compared, ~1,000 DOM changes | Same | ~1,000 effects, ~1,000 DOM changes | 2,000 DOM changes |
+| Add a row at the top | 5,001 compared, ~2,000 DOM changes | 1 DOM change | 2 effects, 1 DOM change | 2,001 DOM changes |
+
+Three things stand out.
+
+- **For small changes in large trees, signals win clearly.** The work is proportional to the change.
+- **When everything changes, the strategies converge.** A thousand changed labels mean a thousand DOM writes whatever the strategy. The Virtual DOM's comparison is a small extra on top of work that has to happen anyway.
+- **The worst case is not the strategy, it is a mistake inside it.** A Virtual DOM without keys does a thousand times more DOM work than the same Virtual DOM with keys.
+
+The script times in the playground are real, but they measure toy implementations in one browser on one machine. Treat them as an illustration of how cost scales, not as a benchmark of React, Vue or Solid. Production frameworks are far more optimised than forty lines of code, and the time a browser spends on style and layout after the script runs often matters more than either.
+
+## Shadow DOM: The Other Question
+
+Shadow DOM has nothing to say about how a component updates. It attaches a separate, hidden DOM tree to an element, and that tree has its own scope for styles and selectors.
+
+```ts
+class StatusBadge extends HTMLElement {
+  constructor() {
+    super();
+    const root = this.attachShadow({ mode: 'open' });
+    root.innerHTML = `
+      <style>
+        .badge {
+          padding: 4px 10px;
+          border-radius: 999px;
+          color: white;
+          background: var(--badge-color, #16815f);
+        }
+      </style>
+      <span class="badge" part="label"><slot></slot></span>
+    `;
+  }
+}
+
+customElements.define('status-badge', StatusBadge);
+```
+
+```html
+<status-badge>Online</status-badge>
+```
+
+The `.badge` rule inside the shadow root does not leak out, and a `.badge` rule on the page does not leak in. `document.querySelector('.badge')` does not find the span inside it. The `<slot>` shows the light DOM children (the text "Online") inside the component's own markup.
+
+The second part of the playground shows the same badge with and without a shadow root, under three page rules.
+
+- **A global `.badge` rule** restyles the light DOM badge and has no effect on the shadow one. This is the protection a design system wants.
+- **A CSS custom property** set on `:root` reaches both. Custom properties inherit through the shadow boundary, which makes design tokens the main way to theme Web Components.
+- **A `::part(label)` rule** reaches only the element the component chose to expose with `part="label"`. Parts are the component's public styling API.
+
+Inherited properties such as `color` and `font-family` also cross the boundary. Everything else has to be let in on purpose.
+
+### Shadow DOM and Server Rendering
+
+Shadow roots used to exist only after JavaScript ran, which ruled them out for server-rendered pages. Declarative Shadow DOM fixes that with a `<template>` element the HTML parser turns into a shadow root directly.
+
+```html
+<status-badge>
+  <template shadowrootmode="open">
+    <style>/* component styles */</style>
+    <span class="badge" part="label"><slot></slot></span>
+  </template>
+  Online
+</status-badge>
+```
+
+It has been supported in Chrome, Edge, Firefox and Safari since 2024.
+
+### What Shadow DOM Costs
+
+Encapsulation works in both directions, and some things a design system needs are on the wrong side of the wall.
+
+- **ARIA references do not cross the boundary.** An `aria-labelledby` or `aria-describedby` inside a shadow root cannot point to an id outside it, and the reverse is also true. A label in the page cannot be connected to an input inside a component by id. Work on reference targets is in progress in the standards bodies, but it is not something to rely on yet.
+- **Forms do not see inputs inside shadow roots.** A custom input has to use `ElementInternals` (and `static formAssociated = true`) to take part in form submission, validation and reset.
+- **Events are retargeted.** A click inside the component appears to come from the host element. Custom events need `composed: true` to cross the boundary at all.
+- **Global styles do not apply.** Resets, utility classes and typography rules from the page stop at the boundary. Each component has to bring its own, or adopt a shared constructable stylesheet.
+- **Framework integration varies.** React 19 added full support for custom elements, including passing properties instead of only attributes and listening to custom events. Older versions need wrappers.
+
+## Choosing as a Staff Engineer
+
+At the level of a single component, the choice is a matter of taste. At the level of an organisation, the rendering strategy is rarely the deciding factor, and the questions are different.
+
+### Where Is the Time Actually Going?
+
+Most slow Virtual DOM applications are not slow because diffing is slow. They are slow because state lives too high in the tree: a context provider at the root that changes on every keystroke, a store subscription that re-renders a whole page, a list without stable keys. Signals would make some of those cases cheaper, but moving state closer to where it is used fixes most of them in the current stack. Profile first. A migration is the most expensive performance fix there is.
+
+### What Crosses a Boundary?
+
+Rendering strategy is a decision inside a team. Boundaries between teams are where the second question matters.
+
+- **A design system used by products on different frameworks** is a good fit for Web Components with Shadow DOM. One implementation works in React, Angular and Vue, and the page cannot accidentally restyle it. Plan for the costs above from the start: tokens as custom properties, a deliberate set of parts, `ElementInternals` for form controls, and a decision on how labels and descriptions are connected across the boundary.
+- **A design system used only by one framework** is usually simpler as components of that framework, with scoped CSS. Shadow DOM adds friction without adding much protection when every consumer shares the same build.
+- **Micro-frontends from different teams on the same page** can use Shadow DOM to stop one application's global CSS from breaking another's. It is a useful wall, but it does not isolate JavaScript, and it turns shared things such as modals, toasts and focus management into cross-boundary problems.
+
+### What Can the Team Debug?
+
+A rendering model is also a debugging model. Developers who know why a React component re-rendered, or why an effect ran twice, can fix problems quickly. A team that moves to signals swaps those questions for new ones: why did this effect not run, which read was not tracked, what triggered this chain of updates. Neither set is harder in absolute terms, but the cost of relearning is real and lands on the team at the worst time: during an incident.
+
+### Where Is the Industry Going?
+
+The frameworks are converging. React added a compiler that removes most manual memoization. Vue is adding a mode without a Virtual DOM. Angular replaced Zone.js with signals. Svelte rebuilt its reactivity on signals. Solid keeps showing how far fine-grained updates can go. The pattern is the same everywhere: do more work at build time, and do less work at runtime by knowing in advance what can change.
+
+That convergence is an argument against rewriting an application to follow it. The framework a team already uses is likely to pick up most of the gains through upgrades. The better investment is in the things that survive any framework: state that lives close to where it is used, stable keys, components with clear inputs, and a design system with a public API (tokens, parts, slots) instead of a pile of overrides.
+
+## Common Misconceptions
+
+- **"The Virtual DOM is faster than the real DOM."** It is not. It is extra work on top of the DOM, which Rich Harris called "pure overhead" back in 2018. Its value is that it makes declarative code affordable, not that it makes updates faster than precise manual writes.
+- **"Shadow DOM is a kind of Virtual DOM."** It is a real DOM tree with its own style scope. It does not batch, diff or speed up anything.
+- **"Signals mean no performance problems."** They remove re-rendering, not work. Large lists still need reconciliation, every binding has a memory cost, and effects that trigger other effects can be slower and harder to follow than a re-render.
+- **"Keys are a React detail."** Any strategy that renders a list from data needs a way to match old items with new ones. The playground's signals version needs one too.
+- **"Web Components replace frameworks."** They are a component model and an encapsulation boundary. Most teams still use a library such as Lit, or a framework, to render inside them.
+
+## Conclusion
+
+The Virtual DOM, compiled instructions and signals are three answers to the same question: when the state changes, how does the framework find the DOM that depends on it? The Virtual DOM re-renders and compares, so its cost follows the size of the tree. Compiled templates skip what the compiler has proven static. Signals record their readers in advance, so their cost follows the size of the change.
+
+Shadow DOM answers a different question: what is allowed to reach a component from outside. It is the right tool when a component has to survive in pages its authors do not control, and an unnecessary one when they do.
+
+For a staff engineer, the useful skill is not picking the winner of a benchmark. It is recognising which question a problem is actually asking. A slow list is usually a state or key problem. A design system that breaks in other teams' pages is an encapsulation problem. A framework migration is almost never the cheapest answer to either.

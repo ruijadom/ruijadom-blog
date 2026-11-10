@@ -55,7 +55,7 @@ export default function ArticleList({
           <p>
             {articles.length
               ? "Try a different keyword or clear your search."
-              : "Check back for new notes on frontend engineering."}
+              : "Check back for new notes on software architecture."}
           </p>
           {query && (
             <button className={s.secondary} onClick={() => setQuery("")}>

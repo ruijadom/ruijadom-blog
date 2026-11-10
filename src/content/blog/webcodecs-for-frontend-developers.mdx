@@ -1,0 +1,369 @@
+---
+title: "WebCodecs for Frontend Developers: Recording a Call in the Browser"
+description: "WebCodecs gives JavaScript direct access to the browser's video and audio encoders. This guide explains how it works by building a recorder that turns frames into an MP4 file without a server."
+date: "2026-10-19"
+published: false
+author: "ruijadom"
+---
+
+Every browser ships with hardware-accelerated video encoders. They compress the camera in a WebRTC call and decode every video on the page. For a long time, frontend code could only reach them through high-level APIs: `<video>` for playback, `MediaRecorder` for recording, `RTCPeerConnection` for calls. Each one decides the codec, the key frames and the container on its own.
+
+WebCodecs removes that layer. It hands JavaScript the encoder and decoder themselves: raw frames go in, compressed chunks come out, and everything in between is up to the application.
+
+This guide builds a call recorder. A test pattern or the camera is drawn into a canvas, each frame is sent to a `VideoEncoder`, the sound goes to an `AudioEncoder`, and the compressed chunks are written into an MP4 file in the same tab. Nothing is uploaded.
+
+{/* Replace SANDBOX_ID with the CodeSandbox created from public/playgrounds/webcodecs-recorder-playground.html
+<CodeSandbox
+  sandboxId="SANDBOX_ID"
+  title="WebCodecs Recorder"
+  height={1100}
+  theme="dark"
+  options={{
+    fontsize: 12,
+    hidenavigation: false,
+    expanddevtools: true,
+    editorsize: 50
+  }}
+/>
+*/}
+
+## What Is WebCodecs?
+
+WebCodecs is a low-level browser API for encoding and decoding audio and video. It exposes the same codecs the browser already uses internally (H.264, VP9, AV1, Opus, AAC) and, when the device has one, the hardware encoder behind them.
+
+What it deliberately does not do is just as important. WebCodecs does not read or write files. An MP4 or WebM file is a **container**: a structure that holds the compressed chunks along with their timing and the information a player needs to decode them. Packing chunks into a container is called **muxing**, and WebCodecs leaves it to a library.
+
+### MediaRecorder vs WebCodecs
+
+- **Control.** `MediaRecorder` takes a stream and returns a file. WebCodecs gives you every frame and every chunk, so you pick the codec, the bitrate, the key frames and what happens to each chunk.
+- **Output.** `MediaRecorder` produces whatever container the browser prefers, usually WebM in Chrome and Firefox and MP4 in Safari. With WebCodecs and a muxer, the output is the same everywhere.
+- **Inputs.** `MediaRecorder` only records a `MediaStream`. WebCodecs encodes any frame you can build: a canvas, a decoded video, an image, a WebGPU texture.
+- **Effort.** `MediaRecorder` is a few lines of code. WebCodecs means managing timestamps, memory and backpressure yourself.
+
+## Browser Support
+
+At the time of writing:
+
+- **Chrome and Edge** support both video and audio encoding from version 94 on desktop and Android.
+- **Firefox** supports WebCodecs from version 130 on desktop.
+- **Safari** supports the video classes from 16.4, and the audio classes from Safari 26.
+
+Codec support is a separate question from API support. A browser can have `VideoEncoder` and still not encode AV1, or only encode H.264 above a certain resolution. The only reliable check is to ask for the exact configuration you plan to use.
+
+```ts
+export async function canEncode(config: VideoEncoderConfig): Promise<boolean> {
+  if (!('VideoEncoder' in window)) return false;
+
+  try {
+    const { supported } = await VideoEncoder.isConfigSupported(config);
+    return supported === true;
+  } catch {
+    // A malformed config throws instead of returning supported: false.
+    return false;
+  }
+}
+```
+
+The playground runs this check for every codec whenever the resolution, bitrate or latency mode changes, and disables the ones that fail.
+
+## The Mental Model
+
+- **`VideoFrame`**: one uncompressed picture, with a timestamp. It holds a reference to memory that is often on the GPU.
+- **`AudioData`**: a block of uncompressed samples, with a timestamp.
+- **`VideoEncoder` / `AudioEncoder`**: take frames or samples and return compressed chunks through a callback.
+- **`EncodedVideoChunk` / `EncodedAudioChunk`**: one compressed unit, marked either `key` or `delta`.
+- **Decoders**: the same in reverse. Chunks go in, frames come out.
+- **Muxer**: not part of WebCodecs. It writes chunks into a container file.
+
+Two rules apply everywhere. Timestamps are in **microseconds**, not milliseconds. And frames must be **closed** by hand, because the garbage collector does not know how much memory they hold.
+
+<Mermaid chart={`
+graph LR
+    Source["Canvas or camera"] --> Frame["VideoFrame"]
+    Mic["Test tone or microphone"] --> Worklet["AudioWorklet"] --> Data["AudioData"]
+    Frame --> VE["VideoEncoder"]
+    Data --> AE["AudioEncoder"]
+    VE -->|EncodedVideoChunk| Mux["MP4 muxer"]
+    AE -->|EncodedAudioChunk| Mux
+    Mux --> File["recording.mp4"]
+`} />
+
+## Key Frames and Delta Frames
+
+A video encoder does not compress each picture on its own. Most frames are **delta frames**, which only describe what changed since the previous frame. Every so often the encoder writes a **key frame**, a complete picture that can be decoded with no history.
+
+That split explains most of the behaviour you see in practice:
+
+- **A player can only start at a key frame.** Seeking to the middle of a file jumps to the nearest key frame before it and decodes forward.
+- **Key frames are expensive.** In the playground they come out several times larger than the delta frames around them.
+- **A lost delta frame breaks everything until the next key frame.** This is why, when packets are lost on a WebRTC call, the receiver asks the sender for a new key frame. That request is called a Picture Loss Indication (PLI).
+
+The playground's chunk timeline shows this. Each bar is one chunk, and the orange ones are key frames. The "Key frame now" button forces one, which is what a sender does when it receives a PLI.
+
+## Building It
+
+### Choosing a Codec
+
+Codecs are identified by codec strings that encode the profile and level. The level sets the maximum resolution and frame rate, so a string that is too low will fail the support check for 720p.
+
+| Codec | Codec string    | Notes                                            |
+| ----- | --------------- | ------------------------------------------------ |
+| H.264 | `avc1.42001f`   | Baseline profile, level 3.1. Plays everywhere.   |
+| VP9   | `vp09.00.31.08` | Profile 0, level 3.1, 8-bit.                     |
+| AV1   | `av01.0.05M.08` | Main profile, level 3.1, 8-bit. Smallest output. |
+
+```ts
+const config: VideoEncoderConfig = {
+  codec: 'avc1.42001f',
+  width: 1280,
+  height: 720,
+  bitrate: 1_500_000,      // bits per second
+  framerate: 30,
+  latencyMode: 'realtime', // or 'quality'
+  avc: { format: 'avc' },  // needed for MP4, see the pitfalls
+};
+```
+
+`latencyMode` is the setting that separates a call from a file. In `realtime` mode the encoder returns each chunk as soon as possible and may lower quality to keep up, which is what a WebRTC sender does. In `quality` mode it can hold frames back and look ahead to spend its bits better.
+
+### Creating the Encoder
+
+An encoder is created with two callbacks, then configured. Every chunk it produces arrives in `output`, together with metadata. The first chunk's metadata carries the decoder configuration that the muxer writes into the file header.
+
+```ts
+const encoder = new VideoEncoder({
+  output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+  error: (error) => console.error('Encoder failed', error),
+});
+
+encoder.configure(config);
+```
+
+After an error, the encoder moves to the `closed` state and cannot be used again. A new one has to be created.
+
+### Producing Frames
+
+A `VideoFrame` can be created directly from a canvas, an `<img>`, an `ImageBitmap` or a `<video>` element. The playground draws everything into a single canvas (the test pattern, or the camera with a timecode on top) and builds each frame from it.
+
+```ts
+const FRAME_MS = 1000 / 30;
+let nextFrameAt = 0;
+let lastKeyAt = -Infinity;
+
+function captureFrame(now: number) {
+  const elapsed = now - startedAt;
+  if (elapsed < nextFrameAt) return;
+  nextFrameAt = (Math.floor(elapsed / FRAME_MS) + 1) * FRAME_MS;
+
+  // The encoder is falling behind: drop this frame instead of queueing it.
+  if (encoder.encodeQueueSize > 4) {
+    dropped++;
+    return;
+  }
+
+  const frame = new VideoFrame(canvas, {
+    timestamp: Math.round(elapsed * 1000), // microseconds
+  });
+
+  const keyFrame = elapsed - lastKeyAt >= 2000;
+  if (keyFrame) lastKeyAt = elapsed;
+
+  encoder.encode(frame, { keyFrame });
+  frame.close();
+}
+```
+
+This function runs inside a `requestAnimationFrame` loop. A few lines in it do more work than they seem to.
+
+- **The frame rate is set by the code, not by the display.** `requestAnimationFrame` fires at 60 Hz or higher, so the loop only sends a frame when the next 33 ms slot has been reached.
+- **`encodeQueueSize` is the backpressure signal.** `encode()` returns immediately and queues the work. If frames are added faster than the encoder can process them, the queue and its memory grow without limit. Dropping frames when the queue is full is what a real-time sender does.
+- **`frame.close()` comes right after `encode()`.** The encoder keeps its own reference, so the frame can be released straight away.
+- **`keyFrame: true` is a request.** The encoder can also add key frames on its own, for example after a scene change, so count the `type` of the chunks that come out rather than the requests that go in.
+
+### Capturing Audio
+
+Video frames come from a canvas. Audio samples have to be taken from the Web Audio graph. The most portable way to do that is a small `AudioWorklet` that copies its input into 20 ms blocks and posts them to the page.
+
+```js
+// tap-processor.js
+class Tap extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.size = Math.round(sampleRate / 50); // 20 ms
+    this.buf = new Float32Array(this.size);
+    this.n = 0;
+  }
+
+  process(inputs) {
+    const input = inputs[0]?.[0];
+    if (!input) return true;
+
+    let offset = 0;
+    while (offset < input.length) {
+      const take = Math.min(input.length - offset, this.size - this.n);
+      this.buf.set(input.subarray(offset, offset + take), this.n);
+      this.n += take;
+      offset += take;
+
+      if (this.n === this.size) {
+        this.port.postMessage(this.buf, [this.buf.buffer]);
+        this.buf = new Float32Array(this.size);
+        this.n = 0;
+      }
+    }
+    return true;
+  }
+}
+
+registerProcessor('tap', Tap);
+```
+
+On the page, each block becomes an `AudioData`. Its timestamp comes from the number of samples sent so far, not from the clock, so the audio track has no gaps.
+
+```ts
+const audioEncoder = new AudioEncoder({
+  output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+  error: (error) => console.error('Audio encoder failed', error),
+});
+audioEncoder.configure({ codec: 'opus', sampleRate: 48000, numberOfChannels: 1, bitrate: 64000 });
+
+let samples = 0;
+tap.port.onmessage = ({ data }: MessageEvent<Float32Array>) => {
+  const audio = new AudioData({
+    format: 'f32-planar',
+    sampleRate: 48000,
+    numberOfChannels: 1,
+    numberOfFrames: data.length,
+    timestamp: Math.round((samples / 48000) * 1e6),
+    data,
+  });
+  audioEncoder.encode(audio);
+  audio.close();
+  samples += data.length;
+};
+```
+
+Chrome also has `MediaStreamTrackProcessor`, which turns a camera or microphone track straight into a stream of `VideoFrame` or `AudioData` objects. It is the shorter path where it exists, but support across browsers is still uneven, so the playground does not depend on it.
+
+The test pattern beeps at the start of every second and flashes a white square at the same moment, using the audio clock for both. Open the recorded file and the beep and the flash should line up. That is a quick way to check audio and video sync.
+
+### Writing the MP4
+
+The muxer receives the chunks from both encoders and builds the file. The playground uses [mp4-muxer](https://github.com/Vanilagy/mp4-muxer), which is small and maps directly onto WebCodecs. Its author has since moved on to [Mediabunny](https://mediabunny.dev), a broader library that covers reading, writing and converting media files, and is the better choice for a new project.
+
+```ts
+import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
+
+const target = new ArrayBufferTarget();
+const muxer = new Muxer({
+  target,
+  video: { codec: 'avc', width: 1280, height: 720, frameRate: 30 },
+  audio: { codec: 'opus', numberOfChannels: 1, sampleRate: 48000 },
+  fastStart: 'in-memory',          // write the index at the start, so it plays while downloading
+  firstTimestampBehavior: 'offset', // let each track start at its first timestamp
+});
+```
+
+### Stopping
+
+Encoding is asynchronous, so some frames are still being processed when the user presses Stop. `flush()` waits for every queued frame to come out as a chunk. Only after both encoders have flushed can the muxer close the file.
+
+```ts
+async function stop() {
+  recording = false;
+
+  await encoder.flush();
+  await audioEncoder.flush();
+  muxer.finalize();
+
+  encoder.close();
+  audioEncoder.close();
+
+  const blob = new Blob([target.buffer], { type: 'video/mp4' });
+  video.src = URL.createObjectURL(blob);
+}
+```
+
+## What the Numbers Show
+
+In one 12-second run in Chrome on a laptop, at 1280×720 and 30 frames a second, the playground reported:
+
+- **Encode time** of 6 to 10 ms per frame, comfortably inside the 33 ms budget, with no dropped frames.
+- **A file of about 800 KB.** The same frames uncompressed, in the I420 format encoders work with, would be about 460 MB, more than 500 times larger.
+- **Key frames three to four times the size of a delta frame** with the camera, and more with the test pattern, where very little changes between frames.
+- **A real bitrate below the target** for the test pattern. The target is a ceiling, not a promise. A mostly static picture does not need 1.5 Mbps, and the encoder does not spend bits it does not need.
+
+Your numbers will differ by device, browser and codec, which is the point of measuring them. Try AV1 against H.264 at the same bitrate, or switch the latency mode, and watch the encode time and the chunk sizes change.
+
+## Using It in React
+
+The encoders, the audio graph and the camera are resources that must be released, so they belong in a hook that owns them. The frame loop reads its state from refs, so encoding 30 frames a second never causes 30 renders.
+
+```tsx
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+type Status = 'idle' | 'recording' | 'finalizing';
+
+export function useRecorder(canvasRef: React.RefObject<HTMLCanvasElement>) {
+  const [status, setStatus] = useState<Status>('idle');
+  const [file, setFile] = useState<Blob | null>(null);
+  const session = useRef<RecorderSession | null>(null);
+
+  const start = useCallback(async () => {
+    if (!canvasRef.current || session.current) return;
+    session.current = await createRecorderSession(canvasRef.current);
+    setStatus('recording');
+  }, [canvasRef]);
+
+  const stop = useCallback(async () => {
+    const current = session.current;
+    if (!current) return;
+    setStatus('finalizing');
+    setFile(await current.finish()); // flush, finalize, close
+    session.current = null;
+    setStatus('idle');
+  }, []);
+
+  // Release the encoders if the component unmounts mid-recording.
+  useEffect(() => () => session.current?.abort(), []);
+
+  return { status, file, start, stop };
+}
+```
+
+Here `createRecorderSession` wraps the encoders, the muxer and the frame loop from the previous sections, and `finish` and `abort` are the two ways out of it. The component only sees three states and, at the end, a `Blob`.
+
+## Should You Use WebCodecs?
+
+### Use WebCodecs When
+
+- You need the same output format in every browser, for example MP4 with H.264 for upload to a service that only accepts that.
+- The frames are generated, not captured: canvas animations, data visualisations, slides, or WebGPU output turned into a video.
+- You are editing or converting video in the browser: trimming, transcoding, extracting thumbnails, or burning in captions.
+- You need control over each frame on a real-time path, such as custom streaming over WebTransport, or frame-level processing before sending.
+
+### Avoid WebCodecs When
+
+- `MediaRecorder` already produces what you need. For "record the camera and upload it", it is a few lines and much less to get wrong.
+- You just need playback. `<video>` with Media Source Extensions or HLS already handles decoding, buffering and sync.
+- You need a regular video call. `RTCPeerConnection` already manages encoding, congestion control and key frame requests.
+
+### The Pragmatic Approach
+
+Feature-detect and keep `MediaRecorder` as the fallback. A recorder can use WebCodecs where it is available and supports the codec it wants, and fall back to `MediaRecorder` with whatever container the browser offers. The user still gets a recording, just with less control over its format.
+
+## Common Pitfalls
+
+- **Forgetting `close()`.** Every `VideoFrame` and `AudioData` holds memory, often on the GPU, until it is closed. Without it, a recording runs for a few seconds and then stalls or crashes the tab. Chrome logs a warning when a frame is garbage-collected without being closed.
+- **Milliseconds instead of microseconds.** `performance.now()` returns milliseconds and WebCodecs expects microseconds. Getting it wrong produces a file that is 1,000 times too short or too long.
+- **The H.264 bitstream format.** By default, H.264 chunks come out in Annex B format, with start codes, which is what a live stream uses. MP4 expects the `avc` format, with the decoder configuration in the file header. Set `avc: { format: 'avc' }` when the output is MP4.
+- **Ignoring backpressure.** `encode()` never blocks. Without a check on `encodeQueueSize`, a slow device fills memory instead of dropping frames.
+- **Codec strings that are too low.** `avc1.42001e` (level 3.0) cannot encode 720p at 30 frames a second, and the support check will reject it. Pick the level from the resolution.
+- **Keeping the whole file in memory.** An `ArrayBufferTarget` holds the entire recording in RAM. For long recordings, write to a stream or to a file picked with the File System Access API instead.
+- **Audio and video drifting apart.** Video timestamps come from the clock and audio timestamps come from the sample count. Over a long recording they can drift. Start both from the same moment, and check sync with something like the beep and flash in the playground.
+
+## Conclusion
+
+WebCodecs is not a replacement for `MediaRecorder`, `<video>` or WebRTC. Those APIs cover the common cases and make their decisions well. What WebCodecs adds is access to the layer underneath: the encoder itself, one frame and one chunk at a time.
+
+The recorder shows the pattern in a small, practical form. Draw frames, encode them with explicit timestamps, respect backpressure, close what you open, and hand the chunks to a muxer. The same pieces, rearranged, produce a video editor, a server-free transcoder, or a custom streaming sender. A good first step for a frontend team is to take something the product already draws, a chart, a whiteboard or a game, and turn it into a video file with a few dozen lines of code.

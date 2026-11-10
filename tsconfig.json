@@ -31,5 +31,5 @@
     "src/content/blog/compound-components.mdx",
     "src/content/blog/compound-components.mdx"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "playgrounds"]
 }
