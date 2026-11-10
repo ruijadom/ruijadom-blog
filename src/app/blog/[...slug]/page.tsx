@@ -52,7 +52,8 @@ export async function generateMetadata({
     title: blog.title,
     description: blog.description,
     authors: {
-      name: blog.author,
+      name: siteConfig.authorName,
+      url: siteConfig.social.linkedin,
     },
   };
 }
@@ -98,12 +99,12 @@ export default async function BlogPageItem({ params }: BlogPageItemProps) {
             <div className="mt-4 flex space-x-4">
               <Image
                 src={siteConfig.authorImage}
-                alt={blog.author}
+                alt={siteConfig.authorName}
                 className="size-9 rounded-full bg-white object-cover "
               />
 
               <div className="flex-1 text-left leading-tight">
-                <p className="font-medium">{blog.author}</p>
+                <p className="font-medium">{siteConfig.authorName}</p>
                 <p className="text-[12px] text-muted-foreground">
                   @{blog.author}
                 </p>

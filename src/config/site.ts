@@ -3,6 +3,7 @@ export const siteConfig = {
   name: "@ruijadom",
   description: "Crafting responsive and scalable front-end architectures",
   author: "ruijadom",
+  authorName: "Rui Domingues",
   authorImage: authorAvatar,
   social: {
     github: "https://github.com/ruijadom",
