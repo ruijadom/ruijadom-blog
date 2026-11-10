@@ -5,7 +5,7 @@ export const PHASES = [
     tag: "01 / DISCOVER",
     title: "Make the first connection.",
     detail:
-      "Harvest feature shards. Fix bugs before they reach your softphone.",
+      "Harvest feature shards. Fix bugs before they reach your product.",
     lesson:
       "A working prototype is a beginning. Invest in the tools that keep it working.",
     bug: "SIP timeout",
@@ -37,7 +37,7 @@ export const PHASES = [
     name: "Production",
     tag: "04 / RELEASE",
     title: "Ship. Observe. Improve.",
-    detail: "Survive the final traffic spike to release your softphone.",
+    detail: "Survive the final traffic spike to release your product.",
     lesson:
       "Shipping is a milestone. Observability and automation keep production healthy.",
     bug: "Packet loss",

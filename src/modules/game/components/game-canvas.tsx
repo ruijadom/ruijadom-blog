@@ -60,7 +60,7 @@ const choices: {
     id: "shield",
     title: "Resilience layer",
     subtitle: "PROTECT",
-    text: "Add 1 maximum integrity and restore 2 points. Give your softphone room to recover.",
+    text: "Add 1 maximum integrity and restore 2 points. Give your product room to recover.",
     icon: Shield,
   },
   {
@@ -369,7 +369,7 @@ export function GameCanvas() {
         </Link>
         <div className={styles.brand}>
           <span className={styles.brandMark}>✳</span> DEV SPACE{" "}
-          <small>SOFTPHONE ODYSSEY</small>
+          <small>A DEVELOPER&apos;S ODYSSEY</small>
         </div>
         <div className={styles.tools}>
           <button
@@ -570,7 +570,7 @@ export function GameCanvas() {
                         <em>Built under pressure.</em>
                       </h1>
                       <p>
-                        Pilot your softphone from first prototype to production.
+                        Pilot your product from first prototype to production.
                         Collect features, eliminate bugs, and build the systems
                         that have your back.
                       </p>
@@ -677,7 +677,7 @@ export function GameCanvas() {
                       </h1>
                       <p>
                         {view.mode === "won"
-                          ? "From prototype to production. Your softphone made it through."
+                          ? "From prototype to production. Your product made it through."
                           : "Integrity reached zero. Try automated tests or a resilience upgrade on your next run."}
                       </p>
                       <div className={styles.results}>

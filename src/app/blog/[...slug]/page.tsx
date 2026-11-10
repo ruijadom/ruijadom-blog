@@ -55,6 +55,21 @@ export async function generateMetadata({
       name: siteConfig.authorName,
       url: siteConfig.social.linkedin,
     },
+    openGraph: {
+      type: "article",
+      title: blog.title,
+      description: blog.description,
+      url: `/blog/${blog.slugAsParams}`,
+      publishedTime: blog.date,
+      authors: [siteConfig.authorName],
+      images: [{ url: siteConfig.ogImage, width: 1200, height: 630 }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: blog.title,
+      description: blog.description,
+      images: [siteConfig.ogImage],
+    },
   };
 }
 

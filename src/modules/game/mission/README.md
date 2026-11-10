@@ -1,4 +1,4 @@
-# Dev Space · Softphone Odyssey
+# Dev Space · A Developer's Odyssey
 
 A new version of the blog's existing `/game` experience. The `GameCanvas` export and route stay compatible with the blog. No new dependencies or lockfile changes are required.
 

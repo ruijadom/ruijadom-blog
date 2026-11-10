@@ -1,6 +1,8 @@
 import authorAvatar from "../../public/images/author/ruijadom.png";
 export const siteConfig = {
   name: "@ruijadom",
+  url: "https://www.ruijadom.com",
+  ogImage: "/images/og.png",
   description: "Crafting responsive and scalable front-end architectures",
   author: "ruijadom",
   authorName: "Rui Domingues",

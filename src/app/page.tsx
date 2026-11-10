@@ -105,7 +105,7 @@ export default function Home() {
           <span>
             DEV SPACE
             <br />
-            <small>SOFTPHONE ODYSSEY</small>
+            <small>A DEVELOPER&apos;S ODYSSEY</small>
           </span>
         </div>
         <div className={s.gameCopy}>
@@ -116,7 +116,7 @@ export default function Home() {
             <em>Good systems keep you going.</em>
           </h2>
           <p>
-            Take your softphone from prototype to production. Fix bugs, invest
+            Take your product from prototype to production. Fix bugs, invest
             in automation, and put the development cycle into play.
           </p>
           <div className={s.actions}>
